@@ -1,0 +1,266 @@
+﻿PROJECT SNAPSHOT: SUPPORT-GO
+Версия: draft v1
+Дата: 2026-02-14
+
+1) ЦЕЛЬ ПРОЕКТА
+Support-Go — микросервисная система поддержки (helpdesk), которую можно уверенно презентовать:
+- современная архитектура;
+- реалистичные бизнес-флоу;
+- масштабируемость без оверинжиниринга;
+- наблюдаемость, безопасность, тестируемость.
+
+Цель v1:
+- полный жизненный цикл тикета;
+- роли и доступы;
+- комментарии и история изменений;
+- уведомления;
+- метрики/логи/трейсинг;
+- рабочий UI для демонстрации.
+
+2) ГРАНИЦЫ V1 (SCOPE)
+Входит в v1:
+- Аутентификация и авторизация (JWT, роли: client/agent/admin).
+- Управление тикетами:
+  - создание;
+  - обновление;
+  - смена статуса;
+  - назначение агента;
+  - приоритет;
+  - SLA-метки.
+- Комментарии к тикетам.
+- Аудит действий (кто/что/когда изменил).
+- Асинхронные события в Kafka (ticket_created, ticket_updated, comment_added, ticket_assigned, ticket_closed).
+- Нотификации (как отдельный consumer сервиса).
+- Базовый поиск и фильтрация тикетов.
+- Web UI для клиентов/агентов/админа.
+
+Не входит в v1 (отложено):
+- ML-классификация тикетов;
+- сложная омниканальность (телефония, соцсети и т.д.);
+- multi-tenant на уровне изоляции БД;
+- полноценный BI-слой.
+
+3) ВЫСОКОУРОВНЕВАЯ АРХИТЕКТУРА
+Компоненты:
+- Frontend (React SPA): UI для операторов и клиентов.
+- API (Go): REST API + бизнес-логика.
+- PostgreSQL: основное хранилище.
+- Redis: кэш, rate limit, краткоживущие ключи.
+- Kafka: шина событий и асинхронные процессы.
+- Notification Worker (Go consumer): читает события и отправляет уведомления.
+- Observability stack: Prometheus + Grafana + OpenTelemetry + централизованные логи.
+
+Поток данных (кратко):
+1. Пользователь выполняет действие в UI.
+2. API валидирует JWT/роль, применяет бизнес-правила.
+3. API пишет изменения в PostgreSQL.
+4. API публикует доменное событие в Kafka.
+5. Consumer обрабатывает событие (нотификация, вторичные действия).
+6. Метрики/логи/трейсы фиксируют весь путь.
+
+4) СЕРВИСНЫЕ ГРАНИЦЫ (ПРАКТИЧНО ДЛЯ V1)
+На старте допускается модульный монолит на Go с четкими bounded context внутри, чтобы не плодить сервисы слишком рано.
+
+Контексты в API-сервисе:
+- Identity & Access
+- Ticket Management
+- Comment Management
+- SLA/Rules (базовый)
+- Audit
+- Search/Filters
+
+Отдельный процесс:
+- Notification Worker (consumer Kafka).
+
+Причина: архитектура уже "микросервисно готова", но MVP быстрее и стабильнее в реализации.
+
+5) ДЕТАЛИ БИЗНЕС-ДОМЕНА
+Сущности:
+- User: id, email, password_hash, role, status, created_at, updated_at
+- Ticket: id, public_id, title, description, status, priority, requester_id, assignee_id, sla_due_at, created_at, updated_at, closed_at
+- Comment: id, ticket_id, author_id, body, is_internal, created_at
+- TicketEvent (audit): id, ticket_id, actor_id, event_type, old_value(jsonb), new_value(jsonb), created_at
+- Tag и TicketTag (optional для v1, если нужно фильтровать).
+
+Статусы тикета (пример v1):
+- new
+- open
+- pending_customer
+- pending_internal
+- resolved
+- closed
+
+Ключевые правила:
+- Только agent/admin назначают assignee.
+- Закрытие тикета доступно agent/admin (или requester при resolved, если так решим в политике).
+- Каждое изменение статуса логируется в TicketEvent.
+- Internal comment виден только agent/admin.
+
+6) API КОНТРАКТ (МИНИМАЛЬНЫЙ НАБОР)
+Auth:
+- POST /api/v1/auth/register
+- POST /api/v1/auth/login
+- POST /api/v1/auth/refresh
+
+Tickets:
+- POST /api/v1/tickets
+- GET /api/v1/tickets
+- GET /api/v1/tickets/{id}
+- PATCH /api/v1/tickets/{id}
+- PATCH /api/v1/tickets/{id}/assign
+- PATCH /api/v1/tickets/{id}/status
+
+Comments:
+- POST /api/v1/tickets/{id}/comments
+- GET /api/v1/tickets/{id}/comments
+
+Audit:
+- GET /api/v1/tickets/{id}/events
+
+Health/Observability:
+- GET /healthz
+- GET /readyz
+- GET /metrics
+
+7) СОБЫТИЯ KAFKA (V1)
+Топики:
+- support.ticket.events
+- support.comment.events
+- support.notification.events (optional)
+
+Примеры event types:
+- ticket.created
+- ticket.updated
+- ticket.assigned
+- ticket.status.changed
+- ticket.closed
+- comment.added
+
+Требования к событиям:
+- event_id (UUID)
+- event_type
+- occurred_at (UTC ISO8601)
+- producer
+- entity_id
+- payload (JSON)
+- trace_id (для корреляции)
+
+Гарантии/подход:
+- at-least-once delivery;
+- idempotent consumer в Notification Worker;
+- retry + DLQ (на следующем этапе, можно заложить интерфейсы сразу).
+
+8) ТЕХНИЧЕСКИЙ СТЕК (ФИКСАЦИЯ)
+Backend:
+- Go 1.23+ (или актуальная стабильная версия на момент старта)
+- HTTP: chi (минималистично и чисто)
+- DB: PostgreSQL
+- SQL доступ: pgx + sqlc (типобезопасные запросы)
+- Cache: Redis
+- Migrations: golang-migrate
+- Config: env + clean config package
+- Logging: zerolog или zap
+- Tracing/Metrics: OpenTelemetry + Prometheus
+
+Messaging:
+- Kafka (как ты предложил) — популярно, профессионально, презентабельно.
+
+Frontend:
+- React — ДА, достаточно для современного, динамичного, мощного интерфейса.
+- TypeScript — обязательно.
+- UI: MUI или Ant Design (быстрый enterprise-вид).
+- Data layer: TanStack Query.
+- Routing: React Router.
+- Forms: React Hook Form + Zod.
+
+Сборка фронта:
+- Рекомендация: Vite.
+Причины:
+- очень быстрый dev/start;
+- стабильная сборка production;
+- отличная связка с React + TypeScript;
+- проще, чем тяжелые legacy-конфиги.
+
+Когда выбирать Next.js вместо Vite:
+- если нужен SSR/SEO как ключевая цель.
+Для внутреннего support-интерфейса чаще достаточно React + Vite.
+
+9) СТРУКТУРА РЕПО (ПРЕДЛОЖЕНИЕ)
+/support-go
+  /backend
+    /cmd/api
+    /cmd/worker
+    /internal
+      /auth
+      /ticket
+      /comment
+      /audit
+      /platform (db, cache, kafka, observability, config)
+    /migrations
+    /api (openapi)
+  /frontend
+    /src
+      /app
+      /pages
+      /widgets
+      /features
+      /entities
+      /shared
+  /deploy
+    docker-compose.yml
+    /kafka
+  /docs
+    architecture.md
+    api.md
+    runbook.md
+
+10) КАЧЕСТВО И НАДЕЖНОСТЬ
+Обязательно с первого этапа:
+- correlation/request id;
+- structured logs;
+- health/readiness probes;
+- миграции с версионированием;
+- unit + integration tests;
+- линтинг и CI;
+- базовые security controls (hash passwords, JWT rotation policy, CORS policy, rate limit).
+
+11) ROADMAP ПО ЭТАПАМ
+Этап 1: Foundation
+- каркас backend + frontend;
+- auth;
+- миграции;
+- базовая observability.
+
+Этап 2: Core Ticket Flow
+- CRUD/статусы/назначения/комментарии;
+- аудит;
+- базовые фильтры.
+
+Этап 3: Async + Notifications
+- Kafka producer/consumer;
+- notification worker;
+- retry policy.
+
+Этап 4: UX + Demo Polish
+- улучшение интерфейса агентов;
+- dashboard метрик;
+- demo сценарии и документация.
+
+12) РЕШЕНИЕ ПО FRONTEND (ИТОГ)
+- React хватает полностью для поставленной цели.
+- Для "современно и динамично" критично не только React, но и архитектура фронта:
+  - типобезопасность;
+  - аккуратный state/data management;
+  - дизайн-система;
+  - производительность таблиц/фильтров.
+- Сборщик берем Vite как основной выбор.
+
+13) ЧТО СОГЛАСОВАТЬ ПЕРЕД СТАРТОМ РЕАЛИЗАЦИИ
+- точный список ролей и их permissions;
+- SLA-политика (что считается нарушением);
+- нужна ли realtime-лента обновлений (WebSocket/SSE) сразу в v1;
+- UI-kit (MUI или Ant) и визуальный стиль;
+- нужна ли загрузка файлов в v1.
+
+Итог:
+Go + Kafka + React (TypeScript) + Vite — сильный и современный стек для качественного демонстрационного микросервиса саппорта.

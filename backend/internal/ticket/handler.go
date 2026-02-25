@@ -1,0 +1,224 @@
+package ticket
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+)
+
+type Handler struct {
+	service *Service
+}
+
+func RegisterRoutes(mux *http.ServeMux, service *Service) {
+	handler := &Handler{service: service}
+	mux.HandleFunc("/api/v1/tickets", handler.ticketsCollection)
+	mux.HandleFunc("/api/v1/tickets/", handler.ticketsWithID)
+}
+
+type createTicketRequest struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Priority    Priority `json:"priority"`
+	RequesterID string   `json:"requester_id"`
+	SLADueAt    *string  `json:"sla_due_at"`
+}
+
+type updateTicketRequest struct {
+	Title       *string   `json:"title"`
+	Description *string   `json:"description"`
+	Priority    *Priority `json:"priority"`
+}
+
+type assignTicketRequest struct {
+	AssigneeID string `json:"assignee_id"`
+}
+
+type statusTicketRequest struct {
+	Status Status `json:"status"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+func (handler *Handler) ticketsCollection(writer http.ResponseWriter, request *http.Request) {
+	switch request.Method {
+	case http.MethodPost:
+		handler.createTicket(writer, request)
+	case http.MethodGet:
+		writeJSON(writer, http.StatusOK, handler.service.List())
+	default:
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (handler *Handler) ticketsWithID(writer http.ResponseWriter, request *http.Request) {
+	path := strings.Trim(request.URL.Path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 4 {
+		writeJSON(writer, http.StatusNotFound, errorResponse{Error: "route not found"})
+		return
+	}
+
+	id := parts[3]
+	if id == "" {
+		writeValidationError(writer, "id is required")
+		return
+	}
+
+	if len(parts) == 4 {
+		handler.ticketByID(writer, request, id)
+		return
+	}
+
+	subresource := parts[4]
+	switch subresource {
+	case "assign":
+		if request.Method != http.MethodPatch {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		handler.assignTicket(writer, request, id)
+	case "status":
+		if request.Method != http.MethodPatch {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		handler.changeTicketStatus(writer, request, id)
+	default:
+		writeJSON(writer, http.StatusNotFound, errorResponse{Error: "route not found"})
+	}
+}
+
+func (handler *Handler) ticketByID(writer http.ResponseWriter, request *http.Request, id string) {
+	switch request.Method {
+	case http.MethodGet:
+		ticketValue, err := handler.service.GetByID(id)
+		if err != nil {
+			handleServiceError(writer, err)
+			return
+		}
+		writeJSON(writer, http.StatusOK, ticketValue)
+	case http.MethodPatch:
+		handler.patchTicket(writer, request, id)
+	default:
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (handler *Handler) createTicket(writer http.ResponseWriter, request *http.Request) {
+	var body createTicketRequest
+	if err := decodeJSON(request, &body); err != nil {
+		writeValidationError(writer, err.Error())
+		return
+	}
+
+	var slaDueAt *time.Time
+	if body.SLADueAt != nil {
+		parsed, err := time.Parse(time.RFC3339, *body.SLADueAt)
+		if err != nil {
+			writeValidationError(writer, "sla_due_at must be RFC3339 timestamp")
+			return
+		}
+		parsedUTC := parsed.UTC()
+		slaDueAt = &parsedUTC
+	}
+
+	ticketValue, err := handler.service.Create(CreateInput{
+		Title:       body.Title,
+		Description: body.Description,
+		Priority:    body.Priority,
+		RequesterID: body.RequesterID,
+		SLADueAt:    slaDueAt,
+	})
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusCreated, ticketValue)
+}
+
+func (handler *Handler) patchTicket(writer http.ResponseWriter, request *http.Request, id string) {
+	var body updateTicketRequest
+	if err := decodeJSON(request, &body); err != nil {
+		writeValidationError(writer, err.Error())
+		return
+	}
+
+	ticketValue, err := handler.service.Update(id, UpdateInput{
+		Title:       body.Title,
+		Description: body.Description,
+		Priority:    body.Priority,
+	})
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, ticketValue)
+}
+
+func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.Request, id string) {
+	var body assignTicketRequest
+	if err := decodeJSON(request, &body); err != nil {
+		writeValidationError(writer, err.Error())
+		return
+	}
+
+	ticketValue, err := handler.service.Assign(id, body.AssigneeID)
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, ticketValue)
+}
+
+func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *http.Request, id string) {
+	var body statusTicketRequest
+	if err := decodeJSON(request, &body); err != nil {
+		writeValidationError(writer, err.Error())
+		return
+	}
+
+	ticketValue, err := handler.service.ChangeStatus(id, body.Status)
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, ticketValue)
+}
+
+func decodeJSON(request *http.Request, destination any) error {
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(destination)
+}
+
+func handleServiceError(writer http.ResponseWriter, err error) {
+	if errors.Is(err, ErrNotFound) {
+		writeJSON(writer, http.StatusNotFound, errorResponse{Error: err.Error()})
+		return
+	}
+	if errors.Is(err, ErrValidation) {
+		writeJSON(writer, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(writer, http.StatusInternalServerError, errorResponse{Error: "internal server error"})
+}
+
+func writeValidationError(writer http.ResponseWriter, message string) {
+	writeJSON(writer, http.StatusBadRequest, errorResponse{Error: message})
+}
+
+func writeJSON(writer http.ResponseWriter, statusCode int, payload any) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(statusCode)
+	_ = json.NewEncoder(writer).Encode(payload)
+}
