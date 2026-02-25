@@ -1,0 +1,22 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Go
+backend/bin/
+backend/coverage.out
+backend/.cache/

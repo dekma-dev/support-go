@@ -10,11 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"support-go/backend/internal/health"
 	"support-go/backend/internal/platform/config"
 	platformhttp "support-go/backend/internal/platform/http"
 	"support-go/backend/internal/ticket"
-	"support-go/backend/internal/ticket/memory"
+	"support-go/backend/internal/ticket/postgres"
 )
 
 func main() {
@@ -23,10 +24,28 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 	logger.Info("starting support-go api", "port", cfg.HTTPPort, "env", cfg.Environment)
 
+	if cfg.DatabaseURL == "" {
+		logger.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+
+	dbPool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("failed to connect to postgres", "error", err)
+		os.Exit(1)
+	}
+	defer dbPool.Close()
+
+	if pingErr := dbPool.Ping(context.Background()); pingErr != nil {
+		logger.Error("postgres ping failed", "error", pingErr)
+		os.Exit(1)
+	}
+	logger.Info("postgres connected")
+
 	mux := http.NewServeMux()
 	health.RegisterRoutes(mux)
 
-	ticketRepository := memory.NewRepository()
+	ticketRepository := postgres.NewRepository(dbPool)
 	ticketService := ticket.NewService(ticketRepository)
 	ticket.RegisterRoutes(mux, ticketService)
 

@@ -1,25 +1,26 @@
-# Support-Go Runbook (Foundation)
+﻿# Support-Go Runbook (Foundation)
 
-## 1) Поднять инфраструктуру
+## 1) РџРѕРґРЅСЏС‚СЊ РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂСѓ
 
 ```powershell
-cd deploy
-docker compose up -d
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-## 2) Запустить backend
+## 2) Р—Р°РїСѓСЃС‚РёС‚СЊ backend
 
 ```powershell
+docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000001_create_tickets_table.up.sql
+
 cd backend
 go run ./cmd/api
 ```
 
-Проверить:
+РџСЂРѕРІРµСЂРёС‚СЊ:
 
 - `http://localhost:8080/healthz`
 - `http://localhost:8080/readyz`
 
-## 3) Запустить frontend
+## 3) Р—Р°РїСѓСЃС‚РёС‚СЊ frontend
 
 ```powershell
 cd frontend
@@ -27,7 +28,8 @@ npm install
 npm run dev
 ```
 
-Открыть:
+РћС‚РєСЂС‹С‚СЊ:
 
 - `http://localhost:5173`
+
 
