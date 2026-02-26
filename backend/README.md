@@ -24,3 +24,8 @@ Ticket API foundation (PostgreSQL store):
 - `PATCH http://localhost:8080/api/v1/tickets/{id}`
 - `PATCH http://localhost:8080/api/v1/tickets/{id}/assign`
 - `PATCH http://localhost:8080/api/v1/tickets/{id}/status`
+
+RBAC (temporary header-based):
+
+- For `PATCH /api/v1/tickets/{id}/assign` and `PATCH /api/v1/tickets/{id}/status`, set header `X-User-Role: agent` or `X-User-Role: admin`.
+- `client` role (or missing role) receives `403 Forbidden` for these two operations.

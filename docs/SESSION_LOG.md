@@ -69,3 +69,29 @@
   - Добавить RBAC на операции assign/status.
   - Добавить comments + audit endpoints.
   - Подготовить Kafka producer/consumer каркас.
+
+## Session 2026-02-25 #3
+- Goal:
+  - Реализовать RBAC для операций assign/status и восстановить рабочее Go-окружение для проверок.
+- Done:
+  - Добавлен модуль role-check:
+    - `backend/internal/ticket/authorization.go`
+  - В `backend/internal/ticket/handler.go` добавлены проверки ролей для:
+    - `PATCH /api/v1/tickets/{id}/assign`
+    - `PATCH /api/v1/tickets/{id}/status`
+  - Добавлены тесты RBAC хендлера:
+    - `backend/internal/ticket/handler_test.go`
+  - Выполнен `go mod tidy`, сгенерирован `backend/go.sum`.
+  - Пройдено `go test ./...` в `backend/` (успешно).
+  - Go обнаружен в `C:\Program Files\Go\bin\go.exe`; путь добавлен в пользовательский PATH.
+- Current Stage (Roadmap):
+  - Stage 1 Foundation: частично закрыт (DB + тестовый цикл работают, но auth/JWT и observability еще впереди).
+  - Stage 2 Core Ticket Flow: в работе (ticket flow + RBAC для assign/status готовы, comments/audit/filters отсутствуют).
+  - Stage 3 Async + Notifications: не начато.
+  - Stage 4 UX + Demo Polish: не начато.
+- Risks / Limits:
+  - RBAC сейчас header-based (временный механизм), без полноценного auth/JWT middleware.
+- Next:
+  - Реализовать comments endpoints.
+  - Реализовать audit trail endpoints.
+  - Подготовить каркас Kafka producer/consumer.

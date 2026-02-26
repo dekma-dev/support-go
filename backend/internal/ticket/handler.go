@@ -163,6 +163,11 @@ func (handler *Handler) patchTicket(writer http.ResponseWriter, request *http.Re
 }
 
 func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.Request, id string) {
+	if !canManageAssignmentsAndStatus(roleFromRequest(request)) {
+		writeJSON(writer, http.StatusForbidden, errorResponse{Error: "forbidden: requires role agent or admin"})
+		return
+	}
+
 	var body assignTicketRequest
 	if err := decodeJSON(request, &body); err != nil {
 		writeValidationError(writer, err.Error())
@@ -179,6 +184,11 @@ func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.R
 }
 
 func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *http.Request, id string) {
+	if !canManageAssignmentsAndStatus(roleFromRequest(request)) {
+		writeJSON(writer, http.StatusForbidden, errorResponse{Error: "forbidden: requires role agent or admin"})
+		return
+	}
+
 	var body statusTicketRequest
 	if err := decodeJSON(request, &body); err != nil {
 		writeValidationError(writer, err.Error())
