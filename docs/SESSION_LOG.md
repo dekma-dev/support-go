@@ -136,3 +136,40 @@
   - Добавить auth/JWT слой с middleware.
   - Добавить ticket filters/search в `GET /api/v1/tickets`.
   - Начать Stage 3: Kafka producer + notification worker skeleton.
+
+## Session 2026-02-27 #5
+- Goal:
+  - Начать Stage 3 roadmap: добавить асинхронный каркас Kafka (producer + worker consumer).
+- Done:
+  - Добавлена доменная модель события и интерфейс publisher:
+    - `backend/internal/ticket/event.go`
+  - Сервис тикетов теперь публикует события в Kafka (через интерфейс) при create/update/assign/status/comment:
+    - `backend/internal/ticket/service.go`
+  - Добавлен платформенный Kafka модуль:
+    - `backend/internal/platform/kafka/publisher.go`
+    - `backend/internal/platform/kafka/publisher_test.go`
+  - API bootstrap подключен к Kafka publisher (с fallback на noop при пустом `KAFKA_BROKERS`):
+    - `backend/cmd/api/main.go`
+  - Добавлен Notification Worker skeleton:
+    - `backend/cmd/worker/main.go`
+    - читает `support.ticket.events` и `support.comment.events`, логирует и коммитит offsets.
+  - Обновлен конфиг:
+    - `backend/internal/platform/config/config.go`
+    - `backend/.env.example` (`KAFKA_NOTIFICATION_GROUP`)
+  - Обновлены runbook/backend docs:
+    - `backend/README.md`
+    - `docs/runbook.md`
+  - Прогнаны проверки:
+    - `go mod tidy`
+    - `go test ./...` (успешно)
+- Current Stage (Roadmap):
+  - Stage 1 Foundation: частично закрыт.
+  - Stage 2 Core Ticket Flow: базовый функционал реализован.
+  - Stage 3 Async + Notifications: стартован, есть producer/consumer skeleton.
+  - Stage 4 UX + Demo Polish: не начато.
+- Risks / Limits:
+  - Worker пока только логирует события; реальная логика отправки уведомлений еще не реализована.
+  - Публикация событий пока fire-and-forget (ошибки publish не эскалируются в API-ответ).
+- Next:
+  - Добавить реальную notification-логику (например email/webhook stub + retry policy).
+  - Добавить JWT auth middleware и убрать временный header-based RBAC.

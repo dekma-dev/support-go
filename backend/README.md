@@ -10,6 +10,7 @@ docker exec -i support_go_postgres psql -U support -d support_go < backend/migra
 
 cd backend
 go run ./cmd/api
+go run ./cmd/worker
 ```
 
 API health checks:
@@ -35,3 +36,11 @@ RBAC (temporary header-based):
 - `client` role (or missing role) receives `403 Forbidden` for these two operations.
 - Internal comments (`is_internal=true`) can be created only by `agent/admin`.
 - Internal comments are hidden from `client` in `GET /api/v1/tickets/{id}/comments`.
+
+Async foundation:
+
+- API publishes domain events to Kafka topics:
+  - `support.ticket.events`
+  - `support.comment.events`
+- Notification worker skeleton consumes both topics:
+  - run with `go run ./cmd/worker`

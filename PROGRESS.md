@@ -78,3 +78,39 @@
 
 ### Notes
 - RBAC is still temporary header-based (`X-User-Role`), no JWT middleware yet.
+
+## 2026-02-27
+
+### Done
+- Started Stage 3 (Async foundation):
+  - Added domain event model + publisher interface:
+    - `backend/internal/ticket/event.go`
+  - Extended ticket service to publish Kafka domain events for:
+    - `ticket.created`
+    - `ticket.updated`
+    - `ticket.assigned`
+    - `ticket.status.changed`
+    - `comment.added`
+    - file: `backend/internal/ticket/service.go`
+- Added Kafka platform module:
+  - publisher + noop publisher + broker parser:
+    - `backend/internal/platform/kafka/publisher.go`
+  - tests:
+    - `backend/internal/platform/kafka/publisher_test.go`
+- Wired Kafka publisher in API bootstrap:
+  - `backend/cmd/api/main.go`
+  - falls back to noop publisher when `KAFKA_BROKERS` is empty.
+- Added notification worker skeleton (consumer process):
+  - `backend/cmd/worker/main.go`
+  - consumes `support.ticket.events` and `support.comment.events`
+  - logs received events and commits offsets.
+- Extended config/env for worker:
+  - `backend/internal/platform/config/config.go`
+  - `backend/.env.example` (`KAFKA_NOTIFICATION_GROUP`)
+- Updated docs:
+  - `backend/README.md`
+  - `docs/runbook.md`
+
+### Verification
+- `go mod tidy` executed successfully.
+- `go test ./...` executed successfully in `backend/`.

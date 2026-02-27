@@ -14,6 +14,7 @@ import (
 	"support-go/backend/internal/health"
 	"support-go/backend/internal/platform/config"
 	platformhttp "support-go/backend/internal/platform/http"
+	platformkafka "support-go/backend/internal/platform/kafka"
 	"support-go/backend/internal/ticket"
 	"support-go/backend/internal/ticket/postgres"
 )
@@ -42,13 +43,26 @@ func main() {
 	}
 	logger.Info("postgres connected")
 
+	var publisher ticket.EventPublisher
+	var kafkaPublisher *platformkafka.Publisher
+	brokers := platformkafka.ParseBrokers(cfg.KafkaBrokers)
+	if len(brokers) == 0 {
+		logger.Warn("kafka is not configured, domain events publishing disabled")
+		publisher = platformkafka.NewNoopPublisher()
+	} else {
+		kafkaPublisher = platformkafka.NewPublisher(brokers)
+		defer kafkaPublisher.Close()
+		publisher = kafkaPublisher
+		logger.Info("kafka publisher initialized", "brokers", brokers)
+	}
+
 	mux := http.NewServeMux()
 	health.RegisterRoutes(mux)
 
 	ticketRepository := postgres.NewRepository(dbPool)
 	commentRepository := postgres.NewCommentRepository(dbPool)
 	auditRepository := postgres.NewAuditRepository(dbPool)
-	ticketService := ticket.NewServiceWithDependencies(ticketRepository, commentRepository, auditRepository)
+	ticketService := ticket.NewServiceWithDependenciesAndPublisher(ticketRepository, commentRepository, auditRepository, publisher)
 	ticket.RegisterRoutes(mux, ticketService)
 
 	server := platformhttp.NewServer(cfg.HTTPPort, mux)

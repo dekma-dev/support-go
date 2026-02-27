@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -29,10 +30,12 @@ type Service struct {
 	repo        Repository
 	commentRepo CommentRepository
 	auditRepo   AuditRepository
+	publisher   EventPublisher
 	nowFunc     func() time.Time
 	seq         atomic.Uint64
 	commentSeq  atomic.Uint64
 	eventSeq    atomic.Uint64
+	domainSeq   atomic.Uint64
 }
 
 func NewService(repo Repository) *Service {
@@ -47,6 +50,16 @@ func NewServiceWithDependencies(repo Repository, commentRepo CommentRepository, 
 		repo:        repo,
 		commentRepo: commentRepo,
 		auditRepo:   auditRepo,
+		nowFunc:     time.Now,
+	}
+}
+
+func NewServiceWithDependenciesAndPublisher(repo Repository, commentRepo CommentRepository, auditRepo AuditRepository, publisher EventPublisher) *Service {
+	return &Service{
+		repo:        repo,
+		commentRepo: commentRepo,
+		auditRepo:   auditRepo,
+		publisher:   publisher,
 		nowFunc:     time.Now,
 	}
 }
@@ -101,6 +114,10 @@ func (service *Service) Create(input CreateInput) (Ticket, error) {
 			"priority": ticket.Priority,
 		},
 	)
+	_ = service.publishEvent(TopicTicketEvents, "ticket.created", ticket.ID, map[string]any{
+		"status":   ticket.Status,
+		"priority": ticket.Priority,
+	})
 
 	return ticket, nil
 }
@@ -167,6 +184,11 @@ func (service *Service) Update(id string, input UpdateInput) (Ticket, error) {
 			"priority":    ticket.Priority,
 		},
 	)
+	_ = service.publishEvent(TopicTicketEvents, "ticket.updated", ticket.ID, map[string]any{
+		"title":       ticket.Title,
+		"description": ticket.Description,
+		"priority":    ticket.Priority,
+	})
 
 	return ticket, nil
 }
@@ -196,6 +218,9 @@ func (service *Service) Assign(id string, assigneeID string) (Ticket, error) {
 		map[string]any{"assignee_id": beforeAssignee},
 		map[string]any{"assignee_id": ticket.AssigneeID},
 	)
+	_ = service.publishEvent(TopicTicketEvents, "ticket.assigned", ticket.ID, map[string]any{
+		"assignee_id": ticket.AssigneeID,
+	})
 
 	return ticket, nil
 }
@@ -231,6 +256,9 @@ func (service *Service) ChangeStatus(id string, status Status) (Ticket, error) {
 		map[string]any{"status": beforeStatus},
 		map[string]any{"status": ticket.Status},
 	)
+	_ = service.publishEvent(TopicTicketEvents, "ticket.status.changed", ticket.ID, map[string]any{
+		"status": ticket.Status,
+	})
 
 	return ticket, nil
 }
@@ -285,6 +313,10 @@ func (service *Service) AddComment(input AddCommentInput) (Comment, error) {
 		nil,
 		map[string]any{"comment_id": comment.ID, "is_internal": comment.IsInternal},
 	)
+	_ = service.publishEvent(TopicCommentEvents, "comment.added", ticketID, map[string]any{
+		"comment_id":  comment.ID,
+		"is_internal": comment.IsInternal,
+	})
 
 	return comment, nil
 }
@@ -365,4 +397,22 @@ func normalizeJSONMap(value map[string]any) map[string]any {
 	}
 
 	return normalized
+}
+
+func (service *Service) publishEvent(topic string, eventType string, entityID string, payload map[string]any) error {
+	if service.publisher == nil {
+		return nil
+	}
+
+	event := DomainEvent{
+		ID:         fmt.Sprintf("domain-event-%d", service.domainSeq.Add(1)),
+		Topic:      topic,
+		EventType:  eventType,
+		OccurredAt: service.nowFunc().UTC(),
+		Producer:   "support-go-api",
+		EntityID:   strings.TrimSpace(entityID),
+		Payload:    normalizeJSONMap(payload),
+	}
+
+	return service.publisher.Publish(context.Background(), event)
 }

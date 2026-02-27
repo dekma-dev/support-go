@@ -33,4 +33,11 @@ npm run dev
 
 - `http://localhost:5173`
 
+## 4) Р—Р°РїСѓСЃС‚РёС‚СЊ notification worker (optional)
+
+```powershell
+cd backend
+go run ./cmd/worker
+```
+
 
