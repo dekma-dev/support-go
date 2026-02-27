@@ -115,8 +115,9 @@ func (service *Service) Create(input CreateInput) (Ticket, error) {
 		},
 	)
 	_ = service.publishEvent(TopicTicketEvents, "ticket.created", ticket.ID, map[string]any{
-		"status":   ticket.Status,
-		"priority": ticket.Priority,
+		"status":       ticket.Status,
+		"priority":     ticket.Priority,
+		"requester_id": ticket.RequesterID,
 	})
 
 	return ticket, nil
@@ -185,9 +186,10 @@ func (service *Service) Update(id string, input UpdateInput) (Ticket, error) {
 		},
 	)
 	_ = service.publishEvent(TopicTicketEvents, "ticket.updated", ticket.ID, map[string]any{
-		"title":       ticket.Title,
-		"description": ticket.Description,
-		"priority":    ticket.Priority,
+		"title":        ticket.Title,
+		"description":  ticket.Description,
+		"priority":     ticket.Priority,
+		"requester_id": ticket.RequesterID,
 	})
 
 	return ticket, nil
@@ -219,7 +221,8 @@ func (service *Service) Assign(id string, assigneeID string) (Ticket, error) {
 		map[string]any{"assignee_id": ticket.AssigneeID},
 	)
 	_ = service.publishEvent(TopicTicketEvents, "ticket.assigned", ticket.ID, map[string]any{
-		"assignee_id": ticket.AssigneeID,
+		"assignee_id":  ticket.AssigneeID,
+		"requester_id": ticket.RequesterID,
 	})
 
 	return ticket, nil
@@ -257,7 +260,8 @@ func (service *Service) ChangeStatus(id string, status Status) (Ticket, error) {
 		map[string]any{"status": ticket.Status},
 	)
 	_ = service.publishEvent(TopicTicketEvents, "ticket.status.changed", ticket.ID, map[string]any{
-		"status": ticket.Status,
+		"status":       ticket.Status,
+		"requester_id": ticket.RequesterID,
 	})
 
 	return ticket, nil
@@ -316,6 +320,7 @@ func (service *Service) AddComment(input AddCommentInput) (Comment, error) {
 	_ = service.publishEvent(TopicCommentEvents, "comment.added", ticketID, map[string]any{
 		"comment_id":  comment.ID,
 		"is_internal": comment.IsInternal,
+		"author_id":   comment.AuthorID,
 	})
 
 	return comment, nil

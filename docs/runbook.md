@@ -40,4 +40,10 @@ cd backend
 go run ./cmd/worker
 ```
 
+Worker env (optional tuning):
+
+- `NOTIFICATION_RETRY_MAX` (default: `3`)
+- `NOTIFICATION_RETRY_BACKOFF_MS` (default: `500`)
+- `KAFKA_NOTIFICATION_DLQ_TOPIC` (default: `support.notification.dlq`)
+
 

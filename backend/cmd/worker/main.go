@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	kafkago "github.com/segmentio/kafka-go"
+	"support-go/backend/internal/notification"
 	"support-go/backend/internal/platform/config"
 	platformkafka "support-go/backend/internal/platform/kafka"
 	"support-go/backend/internal/ticket"
@@ -31,14 +33,22 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	notificationService := notification.NewService(notification.NewLogSender(logger))
+	dlqWriter := newWriter(brokers)
+	defer dlqWriter.Close()
+	retryPolicy := retryPolicy{
+		maxAttempts: cfg.NotificationRetryMax,
+		backoff:     time.Duration(cfg.NotificationRetryBackoff) * time.Millisecond,
+	}
+
 	ticketReader := newReader(brokers, cfg.NotificationConsumerGroup, ticket.TopicTicketEvents)
 	commentReader := newReader(brokers, cfg.NotificationConsumerGroup, ticket.TopicCommentEvents)
 	defer ticketReader.Close()
 	defer commentReader.Close()
 
 	errCh := make(chan error, 2)
-	go consumeLoop(ctx, logger, ticketReader, errCh)
-	go consumeLoop(ctx, logger, commentReader, errCh)
+	go consumeLoop(ctx, logger, ticketReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
+	go consumeLoop(ctx, logger, commentReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
 
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignal, syscall.SIGINT, syscall.SIGTERM)
@@ -70,7 +80,41 @@ func newReader(brokers []string, groupID string, topic string) *kafkago.Reader {
 	})
 }
 
-func consumeLoop(ctx context.Context, logger *slog.Logger, reader *kafkago.Reader, errCh chan<- error) {
+func newWriter(brokers []string) *kafkago.Writer {
+	return &kafkago.Writer{
+		Addr:         kafkago.TCP(brokers...),
+		RequiredAcks: kafkago.RequireOne,
+		Async:        false,
+		Balancer:     &kafkago.LeastBytes{},
+	}
+}
+
+type retryPolicy struct {
+	maxAttempts int
+	backoff     time.Duration
+}
+
+type deadLetterMessage struct {
+	OriginalTopic string              `json:"original_topic"`
+	Partition     int                 `json:"partition"`
+	Offset        int64               `json:"offset"`
+	Attempts      int                 `json:"attempts"`
+	FailedAt      time.Time           `json:"failed_at"`
+	Error         string              `json:"error"`
+	Event         *ticket.DomainEvent `json:"event,omitempty"`
+	RawPayload    string              `json:"raw_payload,omitempty"`
+}
+
+func consumeLoop(
+	ctx context.Context,
+	logger *slog.Logger,
+	reader *kafkago.Reader,
+	notificationService *notification.Service,
+	dlqWriter *kafkago.Writer,
+	dlqTopic string,
+	policy retryPolicy,
+	errCh chan<- error,
+) {
 	for {
 		message, err := reader.FetchMessage(ctx)
 		if err != nil {
@@ -81,13 +125,25 @@ func consumeLoop(ctx context.Context, logger *slog.Logger, reader *kafkago.Reade
 		var event ticket.DomainEvent
 		if unmarshalErr := json.Unmarshal(message.Value, &event); unmarshalErr != nil {
 			logger.Error("failed to decode event", "topic", message.Topic, "partition", message.Partition, "offset", message.Offset, "error", unmarshalErr)
+			if dlqErr := writeDeadLetter(ctx, dlqWriter, dlqTopic, message, nil, unmarshalErr, 0); dlqErr != nil {
+				errCh <- dlqErr
+				return
+			}
 		} else {
-			logger.Info("notification event received",
-				"topic", message.Topic,
-				"event_type", event.EventType,
-				"entity_id", event.EntityID,
-				"event_id", event.ID,
-			)
+			processErr := processWithRetry(ctx, notificationService, event, policy)
+			if processErr != nil {
+				logger.Error("notification processing failed, sending to dlq",
+					"topic", message.Topic,
+					"event_type", event.EventType,
+					"entity_id", event.EntityID,
+					"event_id", event.ID,
+					"error", processErr,
+				)
+				if dlqErr := writeDeadLetter(ctx, dlqWriter, dlqTopic, message, &event, processErr, policy.maxAttempts); dlqErr != nil {
+					errCh <- dlqErr
+					return
+				}
+			}
 		}
 
 		if commitErr := reader.CommitMessages(ctx, message); commitErr != nil {
@@ -95,4 +151,63 @@ func consumeLoop(ctx context.Context, logger *slog.Logger, reader *kafkago.Reade
 			return
 		}
 	}
+}
+
+func processWithRetry(ctx context.Context, service *notification.Service, event ticket.DomainEvent, policy retryPolicy) error {
+	maxAttempts := policy.maxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := service.HandleEvent(ctx, event); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		if attempt < maxAttempts && policy.backoff > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(policy.backoff):
+			}
+		}
+	}
+
+	return fmt.Errorf("retries exhausted: %w", lastErr)
+}
+
+func writeDeadLetter(
+	ctx context.Context,
+	writer *kafkago.Writer,
+	dlqTopic string,
+	message kafkago.Message,
+	event *ticket.DomainEvent,
+	processErr error,
+	attempts int,
+) error {
+	payload := deadLetterMessage{
+		OriginalTopic: message.Topic,
+		Partition:     message.Partition,
+		Offset:        message.Offset,
+		Attempts:      attempts,
+		FailedAt:      time.Now().UTC(),
+		Error:         processErr.Error(),
+		Event:         event,
+		RawPayload:    string(message.Value),
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	return writer.WriteMessages(ctx, kafkago.Message{
+		Topic: dlqTopic,
+		Key:   message.Key,
+		Value: raw,
+		Time:  time.Now().UTC(),
+	})
 }

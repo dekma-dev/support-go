@@ -173,3 +173,44 @@
 - Next:
   - Добавить реальную notification-логику (например email/webhook stub + retry policy).
   - Добавить JWT auth middleware и убрать временный header-based RBAC.
+
+## Session 2026-02-27 #6
+- Goal:
+  - Довести worker до практичного baseline: notification handling + retry + DLQ.
+- Done:
+  - Добавлен notification service:
+    - `backend/internal/notification/service.go`
+    - поддерживает маппинг доменных событий в сообщения и отправку через `Sender`.
+  - Добавлены тесты notification service:
+    - `backend/internal/notification/service_test.go`
+  - Worker обновлен:
+    - retry/backoff при ошибках обработки
+    - отправка в DLQ при ошибке decode или исчерпании retry
+    - файлы:
+      - `backend/cmd/worker/main.go`
+      - `backend/cmd/worker/main_test.go`
+  - Добавлены новые env-параметры worker:
+    - `NOTIFICATION_RETRY_MAX`
+    - `NOTIFICATION_RETRY_BACKOFF_MS`
+    - `KAFKA_NOTIFICATION_DLQ_TOPIC`
+    - файлы:
+      - `backend/internal/platform/config/config.go`
+      - `backend/.env.example`
+  - Сервис тикетов публикует более полезный payload для downstream notification:
+    - requester/assignee/author context
+    - файл: `backend/internal/ticket/service.go`
+  - Обновлены docs:
+    - `backend/README.md`
+    - `docs/runbook.md`
+  - Прогнаны тесты:
+    - `go test ./...` (успешно)
+- Current Stage (Roadmap):
+  - Stage 1 Foundation: частично закрыт.
+  - Stage 2 Core Ticket Flow: реализован базовый объем.
+  - Stage 3 Async + Notifications: существенно продвинут (producer + worker + retry/DLQ baseline).
+  - Stage 4 UX + Demo Polish: не начато.
+- Risks / Limits:
+  - Notification sender пока log-based stub, без реальной доставки (email/telegram/webhook).
+- Next:
+  - Добавить реальный transport для notification (например webhook/email adapter).
+  - Добавить JWT auth middleware и заменить временный header-based RBAC.

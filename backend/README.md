@@ -44,3 +44,7 @@ Async foundation:
   - `support.comment.events`
 - Notification worker skeleton consumes both topics:
   - run with `go run ./cmd/worker`
+  - retry and DLQ are configurable:
+    - `NOTIFICATION_RETRY_MAX` (default `3`)
+    - `NOTIFICATION_RETRY_BACKOFF_MS` (default `500`)
+    - `KAFKA_NOTIFICATION_DLQ_TOPIC` (default `support.notification.dlq`)

@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	Environment               string
@@ -8,6 +11,9 @@ type Config struct {
 	DatabaseURL               string
 	KafkaBrokers              string
 	NotificationConsumerGroup string
+	NotificationRetryMax      int
+	NotificationRetryBackoff  int
+	NotificationDLQTopic      string
 }
 
 func Load() Config {
@@ -17,12 +23,29 @@ func Load() Config {
 		DatabaseURL:               getEnv("DATABASE_URL", ""),
 		KafkaBrokers:              getEnv("KAFKA_BROKERS", ""),
 		NotificationConsumerGroup: getEnv("KAFKA_NOTIFICATION_GROUP", "support-go-notification-worker"),
+		NotificationRetryMax:      getEnvInt("NOTIFICATION_RETRY_MAX", 3),
+		NotificationRetryBackoff:  getEnvInt("NOTIFICATION_RETRY_BACKOFF_MS", 500),
+		NotificationDLQTopic:      getEnv("KAFKA_NOTIFICATION_DLQ_TOPIC", "support.notification.dlq"),
 	}
 }
 
 func getEnv(key string, fallback string) string {
 	value := os.Getenv(key)
 	if value == "" {
+		return fallback
+	}
+
+	return value
+}
+
+func getEnvInt(key string, fallback int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
 		return fallback
 	}
 

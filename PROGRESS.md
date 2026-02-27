@@ -114,3 +114,34 @@
 ### Verification
 - `go mod tidy` executed successfully.
 - `go test ./...` executed successfully in `backend/`.
+
+## 2026-02-27 (part 2)
+
+### Done
+- Added notification handling layer:
+  - `backend/internal/notification/service.go`
+  - maps domain events to notification messages and sends via `Sender`.
+- Added tests for notification mapping/flow:
+  - `backend/internal/notification/service_test.go`
+- Upgraded worker processing:
+  - retry with backoff for notification handling
+  - DLQ publish on decode/processing failure
+  - files:
+    - `backend/cmd/worker/main.go`
+    - `backend/cmd/worker/main_test.go`
+- Extended worker config/env:
+  - `NOTIFICATION_RETRY_MAX`
+  - `NOTIFICATION_RETRY_BACKOFF_MS`
+  - `KAFKA_NOTIFICATION_DLQ_TOPIC`
+  - files:
+    - `backend/internal/platform/config/config.go`
+    - `backend/.env.example`
+- Improved event payloads from ticket service for downstream notifications:
+  - includes requester/assignee/author context
+  - file: `backend/internal/ticket/service.go`
+- Updated docs:
+  - `backend/README.md`
+  - `docs/runbook.md`
+
+### Verification
+- `go test ./...` executed successfully in `backend/`.
