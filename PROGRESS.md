@@ -53,3 +53,28 @@
 ### Verification
 - `go mod tidy` executed successfully.
 - `go test ./...` executed successfully in `backend/`.
+
+## 2026-02-26
+
+### Done
+- Implemented comments and audit functionality for tickets:
+  - new domain models: `backend/internal/ticket/activity.go`
+  - service methods: add/list comments, list ticket events + audit recording
+  - endpoints:
+    - `POST /api/v1/tickets/{id}/comments`
+    - `GET /api/v1/tickets/{id}/comments`
+    - `GET /api/v1/tickets/{id}/events`
+- Added PostgreSQL repositories:
+  - `backend/internal/ticket/postgres/comment_repository.go`
+  - `backend/internal/ticket/postgres/audit_repository.go`
+- Added DB migration:
+  - `backend/migrations/000002_create_ticket_comments_events.up.sql`
+  - `backend/migrations/000002_create_ticket_comments_events.down.sql`
+- Wired dependencies in API bootstrap:
+  - `backend/cmd/api/main.go`
+- Extended handler tests:
+  - `backend/internal/ticket/handler_test.go`
+  - coverage includes role-based internal comment visibility and events endpoint.
+
+### Notes
+- RBAC is still temporary header-based (`X-User-Role`), no JWT middleware yet.

@@ -10,6 +10,7 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ```powershell
 docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000001_create_tickets_table.up.sql
+docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000002_create_ticket_comments_events.up.sql
 
 cd backend
 go run ./cmd/api

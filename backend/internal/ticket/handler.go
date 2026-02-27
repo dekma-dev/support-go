@@ -40,6 +40,12 @@ type statusTicketRequest struct {
 	Status Status `json:"status"`
 }
 
+type createCommentRequest struct {
+	AuthorID   string `json:"author_id"`
+	Body       string `json:"body"`
+	IsInternal bool   `json:"is_internal"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -88,6 +94,21 @@ func (handler *Handler) ticketsWithID(writer http.ResponseWriter, request *http.
 			return
 		}
 		handler.changeTicketStatus(writer, request, id)
+	case "comments":
+		switch request.Method {
+		case http.MethodPost:
+			handler.createComment(writer, request, id)
+		case http.MethodGet:
+			handler.listComments(writer, request, id)
+		default:
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	case "events":
+		if request.Method != http.MethodGet {
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		handler.listEvents(writer, request, id)
 	default:
 		writeJSON(writer, http.StatusNotFound, errorResponse{Error: "route not found"})
 	}
@@ -202,6 +223,53 @@ func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *
 	}
 
 	writeJSON(writer, http.StatusOK, ticketValue)
+}
+
+func (handler *Handler) createComment(writer http.ResponseWriter, request *http.Request, id string) {
+	var body createCommentRequest
+	if err := decodeJSON(request, &body); err != nil {
+		writeValidationError(writer, err.Error())
+		return
+	}
+
+	role := roleFromRequest(request)
+	if body.IsInternal && !canManageAssignmentsAndStatus(role) {
+		writeJSON(writer, http.StatusForbidden, errorResponse{Error: "forbidden: internal comments require role agent or admin"})
+		return
+	}
+
+	commentValue, err := handler.service.AddComment(AddCommentInput{
+		TicketID:   id,
+		AuthorID:   body.AuthorID,
+		Body:       body.Body,
+		IsInternal: body.IsInternal,
+	})
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusCreated, commentValue)
+}
+
+func (handler *Handler) listComments(writer http.ResponseWriter, request *http.Request, id string) {
+	comments, err := handler.service.ListComments(id, roleFromRequest(request))
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, comments)
+}
+
+func (handler *Handler) listEvents(writer http.ResponseWriter, _ *http.Request, id string) {
+	events, err := handler.service.ListEvents(id)
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, events)
 }
 
 func decodeJSON(request *http.Request, destination any) error {

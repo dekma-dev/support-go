@@ -46,7 +46,9 @@ func main() {
 	health.RegisterRoutes(mux)
 
 	ticketRepository := postgres.NewRepository(dbPool)
-	ticketService := ticket.NewService(ticketRepository)
+	commentRepository := postgres.NewCommentRepository(dbPool)
+	auditRepository := postgres.NewAuditRepository(dbPool)
+	ticketService := ticket.NewServiceWithDependencies(ticketRepository, commentRepository, auditRepository)
 	ticket.RegisterRoutes(mux, ticketService)
 
 	server := platformhttp.NewServer(cfg.HTTPPort, mux)

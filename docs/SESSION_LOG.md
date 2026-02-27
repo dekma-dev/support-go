@@ -95,3 +95,44 @@
   - Реализовать comments endpoints.
   - Реализовать audit trail endpoints.
   - Подготовить каркас Kafka producer/consumer.
+
+## Session 2026-02-26 #4
+- Goal:
+  - Продвинуть Core Ticket Flow: добавить comments и audit endpoints.
+- Done:
+  - Добавлены доменные сущности:
+    - `backend/internal/ticket/activity.go`
+  - Расширен сервис:
+    - запись audit-событий при create/update/assign/status/comment
+    - методы `AddComment`, `ListComments`, `ListEvents`
+    - файл: `backend/internal/ticket/service.go`
+  - Добавлены PostgreSQL-репозитории:
+    - `backend/internal/ticket/postgres/comment_repository.go`
+    - `backend/internal/ticket/postgres/audit_repository.go`
+  - Добавлена миграция comments/events:
+    - `backend/migrations/000002_create_ticket_comments_events.up.sql`
+    - `backend/migrations/000002_create_ticket_comments_events.down.sql`
+  - Добавлены/обновлены API endpoints:
+    - `POST /api/v1/tickets/{id}/comments`
+    - `GET /api/v1/tickets/{id}/comments`
+    - `GET /api/v1/tickets/{id}/events`
+    - файл: `backend/internal/ticket/handler.go`
+  - Обновлен bootstrap зависимостей:
+    - `backend/cmd/api/main.go`
+  - Добавлены тесты на comments/events + visibility:
+    - `backend/internal/ticket/handler_test.go`
+  - Обновлена документация:
+    - `backend/README.md`
+    - `docs/runbook.md`
+    - `PROGRESS.md`
+- Current Stage (Roadmap):
+  - Stage 1 Foundation: частично готово.
+  - Stage 2 Core Ticket Flow: существенно продвинут (ticket CRUD/status/assign/comments/events есть, но filters и полноценный auth/JWT отсутствуют).
+  - Stage 3 Async + Notifications: не начато.
+  - Stage 4 UX + Demo Polish: не начато.
+- Risks / Limits:
+  - Аутентификация/авторизация пока header-based и не заменяет полноценный JWT+roles middleware.
+- Next:
+  - Добавить auth/JWT слой с middleware.
+  - Добавить ticket filters/search в `GET /api/v1/tickets`.
+  - Начать Stage 3: Kafka producer + notification worker skeleton.
