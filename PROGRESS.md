@@ -145,3 +145,30 @@
 
 ### Verification
 - `go test ./...` executed successfully in `backend/`.
+
+### Next Session Priority
+- Start with deployment to user servers + subdomain setup.
+- Produce a clear deployment checklist and runbook for repeatable rollout.
+
+## 2026-03-06
+
+### Done
+- Started deployment stage deliverables for repeatable server rollout:
+  - production compose stack: `deploy/docker-compose.prod.yml`
+  - reverse proxy + TLS routing: `deploy/Caddyfile`
+  - frontend nginx SPA config: `deploy/nginx/frontend.conf`
+  - production env template: `deploy/.env.prod.example`
+- Added container build definitions:
+  - `backend/Dockerfile` (builds both `api` and `worker` binaries)
+  - `frontend/Dockerfile` (Vite build + nginx runtime)
+- Reworked runbook with deployment checklist and verification flow:
+  - `docs/runbook.md`
+  - includes: server prereqs, DNS/subdomain setup, deploy commands, migration step, post-deploy checks, rollback notes.
+
+### Notes / Limits
+- Migration tooling is still manual SQL execution via `psql`; no automated migration runner wired yet.
+- Auth remains header-based RBAC; JWT middleware is still pending.
+
+### Next Step (planned)
+- Add frontend integration with ticket API and environment-based API base URL.
+- Implement JWT auth middleware and replace temporary header-based role handling.

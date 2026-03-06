@@ -214,3 +214,41 @@
 - Next:
   - Добавить реальный transport для notification (например webhook/email adapter).
   - Добавить JWT auth middleware и заменить временный header-based RBAC.
+
+## Session 2026-02-27 #7 (planning note)
+- Goal:
+  - Следующую сессию начать с инфраструктурного этапа: деплой проекта на сервер(а) и публикация под поддоменом.
+- Planned Scope:
+  - Подготовить production-конфигурацию окружения.
+  - Развернуть backend/frontend (и при необходимости worker) на удаленном сервере.
+  - Настроить DNS для поддомена.
+  - Проверить доступность приложения по домену и health-check endpoints.
+- Next Session Start:
+  - Начать работу именно с деплоя и домена, затем продолжить разработку функционала.
+
+## Session 2026-03-06 #8
+- Goal:
+  - Continue from previous roadmap priority and prepare production deployment baseline (server + subdomain).
+- Done:
+  - Added production deployment stack:
+    - `deploy/docker-compose.prod.yml`
+    - `deploy/Caddyfile`
+    - `deploy/.env.prod.example`
+    - `deploy/nginx/frontend.conf`
+  - Added container builds:
+    - `backend/Dockerfile` (api + worker binaries)
+    - `frontend/Dockerfile` (vite build + nginx serve)
+  - Reworked deployment documentation with repeatable checklist:
+    - `docs/runbook.md`
+    - includes server prerequisites, DNS setup, deploy commands, migration steps, verification and rollback.
+  - Updated progress tracker:
+    - `PROGRESS.md`
+- Current Stage (Roadmap):
+  - Stage 3 Async + Notifications: baseline complete, operational deployment path prepared.
+  - Stage 4 UX + Demo Polish: not started.
+- Risks / Limits:
+  - Migrations are still executed manually via SQL files.
+  - Auth is still temporary header-based RBAC (no JWT middleware yet).
+- Next:
+  - Integrate frontend with API using environment-based base URL.
+  - Implement JWT auth middleware and phase out header-based role checks.
