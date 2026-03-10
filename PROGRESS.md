@@ -172,3 +172,29 @@
 ### Next Step (planned)
 - Add frontend integration with ticket API and environment-based API base URL.
 - Implement JWT auth middleware and replace temporary header-based role handling.
+
+## 2026-03-08
+
+### Done
+- Implemented frontend ticket API integration:
+  - added typed API client with env-based base URL:
+    - `frontend/src/api.ts`
+  - integrated tickets page with:
+    - list tickets (`GET /api/v1/tickets`)
+    - create ticket (`POST /api/v1/tickets`)
+    - loading/error handling and manual refresh
+    - file: `frontend/src/App.tsx`
+- Updated frontend styles for operational form/list UI:
+  - `frontend/src/styles.css`
+- Added frontend local env template and docs:
+  - `frontend/.env.example`
+  - `frontend/README.md`
+- Improved repo hygiene for frontend TS build artifacts:
+  - `.gitignore` now excludes `frontend/*.tsbuildinfo`
+
+### Verification
+- Installed frontend dependencies with `npm install`.
+- Successfully built frontend with `npm run build`.
+
+### Next Step (planned)
+- Implement JWT auth middleware in backend and replace temporary header-based RBAC handling.
