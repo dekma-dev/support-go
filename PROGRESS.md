@@ -198,3 +198,38 @@
 
 ### Next Step (planned)
 - Implement JWT auth middleware in backend and replace temporary header-based RBAC handling.
+
+## 2026-03-10
+
+### Done
+- Implemented backend JWT auth middleware (HS256) and request claims context:
+  - `backend/internal/platform/auth/jwt_middleware.go`
+- Replaced temporary header-based role extraction in ticket handlers:
+  - role now comes from JWT `role` claim in request context
+  - file: `backend/internal/ticket/authorization.go`
+- Wired JWT middleware into API bootstrap:
+  - `JWT_SECRET` is required at startup
+  - files:
+    - `backend/cmd/api/main.go`
+    - `backend/internal/platform/config/config.go`
+- Updated handler tests from `X-User-Role` to Bearer JWT role claims:
+  - added invalid token (`401`) coverage
+  - file: `backend/internal/ticket/handler_test.go`
+- Updated docs and deployment templates:
+  - `backend/README.md`
+  - `docs/runbook.md`
+  - `deploy/.env.prod.example`
+  - `deploy/docker-compose.prod.yml`
+
+### Verification
+- `go test ./...` executed successfully in `backend/`.
+
+### Next Step (planned)
+- Add auth endpoint/flow for issuing JWTs (login/refresh) and propagate token usage in frontend requests.
+
+### Session Recall (for next day)
+- JWT auth middleware is implemented in backend and active for API requests.
+- Temporary header-based RBAC (`X-User-Role`/`X-Role`) is replaced by JWT `role` claim from Bearer token.
+- `JWT_SECRET` is now required for API startup and added to config/deploy templates.
+- Ticket handler tests were migrated to JWT-based authorization and include `401` case for invalid token.
+- Verification status: `go test ./...` passed in `backend/`.

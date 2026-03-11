@@ -30,12 +30,14 @@ Ticket API foundation (PostgreSQL store):
 - `GET http://localhost:8080/api/v1/tickets/{id}/comments`
 - `GET http://localhost:8080/api/v1/tickets/{id}/events`
 
-RBAC (temporary header-based):
+RBAC (JWT role claim):
 
-- For `PATCH /api/v1/tickets/{id}/assign` and `PATCH /api/v1/tickets/{id}/status`, set header `X-User-Role: agent` or `X-User-Role: admin`.
-- `client` role (or missing role) receives `403 Forbidden` for these two operations.
+- Set `JWT_SECRET` in backend environment.
+- Pass role in `Authorization: Bearer <jwt>` using `role` claim (`client`, `agent`, `admin`).
+- `PATCH /api/v1/tickets/{id}/assign` and `PATCH /api/v1/tickets/{id}/status` require `agent/admin` role.
 - Internal comments (`is_internal=true`) can be created only by `agent/admin`.
 - Internal comments are hidden from `client` in `GET /api/v1/tickets/{id}/comments`.
+- Invalid bearer token returns `401 Unauthorized`.
 
 Async foundation:
 

@@ -40,6 +40,7 @@ Edit `deploy/.env.prod` and set real values:
 - `DOMAIN` (example: `support.example.com`)
 - `TLS_EMAIL`
 - `POSTGRES_PASSWORD` (strong secret)
+- `JWT_SECRET` (strong secret for Bearer token verification)
 - optional notification retry settings
 
 ### 2.2 Point subdomain to server
@@ -121,4 +122,4 @@ If migration caused regression:
 
 - TLS is auto-managed by Caddy (`deploy/Caddyfile`).
 - Public entrypoint is `caddy`; `api`, `worker`, `postgres`, `kafka`, `redis` stay internal.
-- Current RBAC is still header-based (`X-User-Role`), JWT auth middleware is not implemented yet.
+- API enforces JWT verification for Bearer tokens (HS256 with `JWT_SECRET`) and uses `role` claim for RBAC.

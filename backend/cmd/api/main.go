@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"support-go/backend/internal/health"
+	platformauth "support-go/backend/internal/platform/auth"
 	"support-go/backend/internal/platform/config"
 	platformhttp "support-go/backend/internal/platform/http"
 	platformkafka "support-go/backend/internal/platform/kafka"
@@ -27,6 +28,10 @@ func main() {
 
 	if cfg.DatabaseURL == "" {
 		logger.Error("DATABASE_URL is required")
+		os.Exit(1)
+	}
+	if cfg.JWTSecret == "" {
+		logger.Error("JWT_SECRET is required")
 		os.Exit(1)
 	}
 
@@ -65,7 +70,8 @@ func main() {
 	ticketService := ticket.NewServiceWithDependenciesAndPublisher(ticketRepository, commentRepository, auditRepository, publisher)
 	ticket.RegisterRoutes(mux, ticketService)
 
-	server := platformhttp.NewServer(cfg.HTTPPort, mux)
+	handler := platformauth.NewJWTMiddleware(cfg.JWTSecret)(mux)
+	server := platformhttp.NewServer(cfg.HTTPPort, handler)
 	serverErr := make(chan error, 1)
 
 	go func() {

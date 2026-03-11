@@ -32,4 +32,3 @@ func writeHealth(writer http.ResponseWriter, statusCode int) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	})
 }
-

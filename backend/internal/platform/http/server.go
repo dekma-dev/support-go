@@ -15,4 +15,3 @@ func NewServer(port string, handler http.Handler) *http.Server {
 		IdleTimeout:       60 * time.Second,
 	}
 }
-

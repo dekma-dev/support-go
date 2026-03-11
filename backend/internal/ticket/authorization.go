@@ -3,6 +3,8 @@ package ticket
 import (
 	"net/http"
 	"strings"
+
+	platformauth "support-go/backend/internal/platform/auth"
 )
 
 type Role string
@@ -14,12 +16,12 @@ const (
 )
 
 func roleFromRequest(request *http.Request) Role {
-	rawRole := request.Header.Get("X-User-Role")
-	if rawRole == "" {
-		rawRole = request.Header.Get("X-Role")
+	claims, ok := platformauth.ClaimsFromContext(request.Context())
+	if !ok {
+		return ""
 	}
 
-	return Role(strings.ToLower(strings.TrimSpace(rawRole)))
+	return Role(strings.ToLower(strings.TrimSpace(claims.Role)))
 }
 
 func canManageAssignmentsAndStatus(role Role) bool {
