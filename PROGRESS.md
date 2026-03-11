@@ -233,3 +233,11 @@
 - `JWT_SECRET` is now required for API startup and added to config/deploy templates.
 - Ticket handler tests were migrated to JWT-based authorization and include `401` case for invalid token.
 - Verification status: `go test ./...` passed in `backend/`.
+
+### Update
+- Added demo auth endpoints for JWT issuance and rotation:
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/refresh`
+- Backend now issues distinct access/refresh HS256 tokens with `token_type`, `sub`, `role`, `exp`, `nbf`, `iat`, `jti`.
+- API middleware now accepts access tokens only; refresh tokens are rejected with `401`.
+- Frontend stores session in `localStorage`, calls login/refresh endpoints, and attaches `Authorization: Bearer <access_token>` automatically on API requests.

@@ -1,9 +1,15 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Route, Routes } from "react-router-dom";
 import {
+  AuthSession,
+  UserRole,
   apiBaseURL,
+  clearStoredSession,
   createTicket,
   listTickets,
+  login,
+  readStoredSession,
+  refreshSession,
   Ticket,
   TicketPriority,
 } from "./api";
@@ -12,12 +18,132 @@ function HomePage() {
   return (
     <section className="card">
       <h2>Support-Go UI</h2>
-      <p>Frontend baseline is connected to the ticket API.</p>
+      <p>Frontend is connected to the ticket API and can issue demo JWT sessions.</p>
     </section>
   );
 }
 
-function TicketsPage() {
+function SessionCard({
+  session,
+  onSessionChange,
+}: {
+  session: AuthSession | null;
+  onSessionChange: (session: AuthSession | null) => void;
+}) {
+  const [subject, setSubject] = useState(session?.subject || "agent-1");
+  const [role, setRole] = useState<UserRole>(session?.role || "agent");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!subject.trim()) {
+      setError("Subject is required");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const nextSession = await login({ subject: subject.trim(), role });
+      onSessionChange(nextSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to login");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onRefresh() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const nextSession = await refreshSession(session?.refresh_token);
+      onSessionChange(nextSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh session");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function onLogout() {
+    clearStoredSession();
+    onSessionChange(null);
+  }
+
+  return (
+    <section className="card">
+      <div className="session-head">
+        <div>
+          <h2>Session Recall</h2>
+          <p>Issue and rotate demo JWTs for API requests.</p>
+        </div>
+        <span className="badge">{session ? "Bearer active" : "Anonymous"}</span>
+      </div>
+
+      <form className="ticket-form" onSubmit={onLogin}>
+        <div className="form-row">
+          <label>
+            Subject
+            <input
+              value={subject}
+              onChange={(event) => setSubject(event.target.value)}
+              placeholder="agent-1"
+              maxLength={100}
+            />
+          </label>
+
+          <label>
+            Role
+            <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+              <option value="client">client</option>
+              <option value="agent">agent</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="action-row">
+          <button type="submit" disabled={submitting}>
+            {submitting ? "Issuing..." : "Login"}
+          </button>
+          <button type="button" onClick={() => void onRefresh()} disabled={submitting || !session}>
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={onLogout}
+            disabled={submitting || !session}
+          >
+            Logout
+          </button>
+        </div>
+      </form>
+
+      {error ? <p className="error">{error}</p> : null}
+      {session ? (
+        <div className="session-grid">
+          <p>
+            <strong>User:</strong> {session.subject}
+          </p>
+          <p>
+            <strong>Role:</strong> {session.role}
+          </p>
+          <p>
+            <strong>Access exp:</strong> {session.expires_at}
+          </p>
+          <p>
+            <strong>Refresh exp:</strong> {session.refresh_expires_at}
+          </p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TicketsPage({ session }: { session: AuthSession | null }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +210,7 @@ function TicketsPage() {
     <section className="card">
       <h2>Tickets</h2>
       <p>API: {apiBaseURL}</p>
+      <p>Auth: {session ? `${session.subject} (${session.role})` : "no bearer token"}</p>
 
       <form className="ticket-form" onSubmit={onCreateTicket}>
         <h3>Create ticket</h3>
@@ -169,6 +296,12 @@ function TicketsPage() {
 }
 
 export function App() {
+  const [session, setSession] = useState<AuthSession | null>(() => readStoredSession());
+
+  useEffect(() => {
+    setSession(readStoredSession());
+  }, []);
+
   return (
     <main className="layout">
       <header className="header">
@@ -179,9 +312,11 @@ export function App() {
         </nav>
       </header>
 
+      <SessionCard session={session} onSessionChange={setSession} />
+
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/tickets" element={<TicketsPage />} />
+        <Route path="/tickets" element={<TicketsPage session={session} />} />
       </Routes>
     </main>
   );

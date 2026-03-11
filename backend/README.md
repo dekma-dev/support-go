@@ -20,6 +20,8 @@ API health checks:
 
 Ticket API foundation (PostgreSQL store):
 
+- `POST http://localhost:8080/api/v1/auth/login`
+- `POST http://localhost:8080/api/v1/auth/refresh`
 - `POST http://localhost:8080/api/v1/tickets`
 - `GET http://localhost:8080/api/v1/tickets`
 - `GET http://localhost:8080/api/v1/tickets/{id}`
@@ -32,8 +34,10 @@ Ticket API foundation (PostgreSQL store):
 
 RBAC (JWT role claim):
 
+- `POST /api/v1/auth/login` accepts `{ "subject": "agent-1", "role": "agent" }`.
+- `POST /api/v1/auth/refresh` accepts `{ "refresh_token": "<jwt>" }` and rotates both tokens.
 - Set `JWT_SECRET` in backend environment.
-- Pass role in `Authorization: Bearer <jwt>` using `role` claim (`client`, `agent`, `admin`).
+- Pass `Authorization: Bearer <access_token>`; API accepts only access tokens and uses `role` claim (`client`, `agent`, `admin`).
 - `PATCH /api/v1/tickets/{id}/assign` and `PATCH /api/v1/tickets/{id}/status` require `agent/admin` role.
 - Internal comments (`is_internal=true`) can be created only by `agent/admin`.
 - Internal comments are hidden from `client` in `GET /api/v1/tickets/{id}/comments`.

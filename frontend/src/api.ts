@@ -7,6 +7,17 @@ export type TicketStatus =
   | "closed";
 
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
+export type UserRole = "client" | "agent" | "admin";
+
+export type AuthSession = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: string;
+  refresh_expires_at: string;
+  subject: string;
+  role: UserRole;
+};
 
 export type Ticket = {
   id: string;
@@ -36,15 +47,24 @@ type APIErrorResponse = {
 };
 
 const defaultAPIBaseURL = "http://localhost:8080";
+const sessionStorageKey = "support-go-session";
 
 export const apiBaseURL = (
   import.meta.env.VITE_API_BASE_URL || defaultAPIBaseURL
 ).replace(/\/+$/, "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options?: { withAuth?: boolean },
+): Promise<T> {
+  const session = readStoredSession();
   const response = await fetch(`${apiBaseURL}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...(options?.withAuth !== false && session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {}),
       ...(init?.headers || {}),
     },
     ...init,
@@ -75,4 +95,58 @@ export function createTicket(input: CreateTicketInput) {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function readStoredSession(): AuthSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const rawValue = window.localStorage.getItem(sessionStorageKey);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawValue) as AuthSession;
+  } catch {
+    window.localStorage.removeItem(sessionStorageKey);
+    return null;
+  }
+}
+
+export function clearStoredSession() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(sessionStorageKey);
+  }
+}
+
+function persistSession(session: AuthSession) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(sessionStorageKey, JSON.stringify(session));
+  }
+}
+
+export async function login(input: { subject: string; role: UserRole }) {
+  const session = await request<AuthSession>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }, { withAuth: false });
+  persistSession(session);
+  return session;
+}
+
+export async function refreshSession(refreshToken?: string) {
+  const currentSession = readStoredSession();
+  const token = refreshToken || currentSession?.refresh_token;
+  if (!token) {
+    throw new Error("No refresh token available");
+  }
+
+  const session = await request<AuthSession>("/api/v1/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: token }),
+  }, { withAuth: false });
+  persistSession(session);
+  return session;
 }
