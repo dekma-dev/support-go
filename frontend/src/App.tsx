@@ -10,6 +10,7 @@ import {
   login,
   readStoredSession,
   refreshSession,
+  register,
   Ticket,
   TicketPriority,
 } from "./api";
@@ -18,7 +19,7 @@ function HomePage() {
   return (
     <section className="card">
       <h2>Support-Go UI</h2>
-      <p>Frontend is connected to the ticket API and can issue demo JWT sessions.</p>
+      <p>Frontend is connected to ticket API and real user auth backed by Postgres.</p>
     </section>
   );
 }
@@ -30,22 +31,38 @@ function SessionCard({
   session: AuthSession | null;
   onSessionChange: (session: AuthSession | null) => void;
 }) {
-  const [subject, setSubject] = useState(session?.subject || "agent-1");
-  const [role, setRole] = useState<UserRole>(session?.role || "agent");
+  const [email, setEmail] = useState(session?.email || "");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserRole>(session?.role || "client");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!subject.trim()) {
-      setError("Subject is required");
-      return;
-    }
+  useEffect(() => {
+    setEmail(session?.email || "");
+    setRole(session?.role || "client");
+  }, [session]);
 
+  async function onRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      const nextSession = await login({ subject: subject.trim(), role });
+      const nextSession = await register({ email: email.trim(), password, role });
+      setPassword("");
+      onSessionChange(nextSession);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to register");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onLogin() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const nextSession = await login({ email: email.trim(), password });
+      setPassword("");
       onSessionChange(nextSession);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to login");
@@ -69,6 +86,7 @@ function SessionCard({
 
   function onLogout() {
     clearStoredSession();
+    setPassword("");
     onSessionChange(null);
   }
 
@@ -76,21 +94,21 @@ function SessionCard({
     <section className="card">
       <div className="session-head">
         <div>
-          <h2>Session Recall</h2>
-          <p>Issue and rotate demo JWTs for API requests.</p>
+          <h2>Session</h2>
+          <p>Register or login with email/password, then use refresh rotation.</p>
         </div>
-        <span className="badge">{session ? "Bearer active" : "Anonymous"}</span>
+        <span className="badge">{session ? "Authenticated" : "Anonymous"}</span>
       </div>
 
-      <form className="ticket-form" onSubmit={onLogin}>
+      <form className="ticket-form" onSubmit={onRegister}>
         <div className="form-row">
           <label>
-            Subject
+            Email
             <input
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-              placeholder="agent-1"
-              maxLength={100}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="agent@example.com"
+              maxLength={160}
             />
           </label>
 
@@ -104,9 +122,23 @@ function SessionCard({
           </label>
         </div>
 
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Minimum 8 characters"
+            maxLength={200}
+          />
+        </label>
+
         <div className="action-row">
           <button type="submit" disabled={submitting}>
-            {submitting ? "Issuing..." : "Login"}
+            {submitting ? "Working..." : "Register"}
+          </button>
+          <button type="button" onClick={() => void onLogin()} disabled={submitting}>
+            Login
           </button>
           <button type="button" onClick={() => void onRefresh()} disabled={submitting || !session}>
             Refresh
@@ -126,7 +158,10 @@ function SessionCard({
       {session ? (
         <div className="session-grid">
           <p>
-            <strong>User:</strong> {session.subject}
+            <strong>User ID:</strong> {session.user_id}
+          </p>
+          <p>
+            <strong>Email:</strong> {session.email}
           </p>
           <p>
             <strong>Role:</strong> {session.role}
@@ -210,7 +245,7 @@ function TicketsPage({ session }: { session: AuthSession | null }) {
     <section className="card">
       <h2>Tickets</h2>
       <p>API: {apiBaseURL}</p>
-      <p>Auth: {session ? `${session.subject} (${session.role})` : "no bearer token"}</p>
+      <p>Auth: {session ? `${session.email} (${session.role})` : "no bearer token"}</p>
 
       <form className="ticket-form" onSubmit={onCreateTicket}>
         <h3>Create ticket</h3>

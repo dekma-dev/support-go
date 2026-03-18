@@ -15,7 +15,8 @@ export type AuthSession = {
   token_type: string;
   expires_at: string;
   refresh_expires_at: string;
-  subject: string;
+  user_id: string;
+  email: string;
   role: UserRole;
 };
 
@@ -127,11 +128,32 @@ function persistSession(session: AuthSession) {
   }
 }
 
-export async function login(input: { subject: string; role: UserRole }) {
-  const session = await request<AuthSession>("/api/v1/auth/login", {
-    method: "POST",
-    body: JSON.stringify(input),
-  }, { withAuth: false });
+export async function register(input: {
+  email: string;
+  password: string;
+  role: UserRole;
+}) {
+  const session = await request<AuthSession>(
+    "/api/v1/auth/register",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    { withAuth: false },
+  );
+  persistSession(session);
+  return session;
+}
+
+export async function login(input: { email: string; password: string }) {
+  const session = await request<AuthSession>(
+    "/api/v1/auth/login",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    { withAuth: false },
+  );
   persistSession(session);
   return session;
 }

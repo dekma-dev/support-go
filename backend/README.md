@@ -7,6 +7,7 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 
 docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000001_create_tickets_table.up.sql
 docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000002_create_ticket_comments_events.up.sql
+docker exec -i support_go_postgres psql -U support -d support_go < backend/migrations/000003_create_users_table.up.sql
 
 cd backend
 go run ./cmd/api
@@ -20,6 +21,7 @@ API health checks:
 
 Ticket API foundation (PostgreSQL store):
 
+- `POST http://localhost:8080/api/v1/auth/register`
 - `POST http://localhost:8080/api/v1/auth/login`
 - `POST http://localhost:8080/api/v1/auth/refresh`
 - `POST http://localhost:8080/api/v1/tickets`
@@ -34,9 +36,11 @@ Ticket API foundation (PostgreSQL store):
 
 RBAC (JWT role claim):
 
-- `POST /api/v1/auth/login` accepts `{ "subject": "agent-1", "role": "agent" }`.
+- `POST /api/v1/auth/register` accepts `{ "email": "agent@example.com", "password": "password123", "role": "agent" }`.
+- `POST /api/v1/auth/login` accepts `{ "email": "agent@example.com", "password": "password123" }`.
 - `POST /api/v1/auth/refresh` accepts `{ "refresh_token": "<jwt>" }` and rotates both tokens.
 - Set `JWT_SECRET` in backend environment.
+- User records are stored in PostgreSQL `users` table with bcrypt password hashes.
 - Pass `Authorization: Bearer <access_token>`; API accepts only access tokens and uses `role` claim (`client`, `agent`, `admin`).
 - `PATCH /api/v1/tickets/{id}/assign` and `PATCH /api/v1/tickets/{id}/status` require `agent/admin` role.
 - Internal comments (`is_internal=true`) can be created only by `agent/admin`.

@@ -2,11 +2,14 @@ package identity
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	platformauth "support-go/backend/internal/platform/auth"
 )
@@ -16,6 +19,7 @@ const testJWTSecret = "test-jwt-secret"
 func newTestHandler() *Handler {
 	fixedNow := time.Date(2026, time.March, 11, 10, 0, 0, 0, time.UTC)
 	return &Handler{
+		repo:       newMemoryRepository(),
 		secret:     testJWTSecret,
 		now:        func() time.Time { return fixedNow },
 		accessTTL:  15 * time.Minute,
@@ -23,10 +27,71 @@ func newTestHandler() *Handler {
 	}
 }
 
-func TestLoginIssuesAccessAndRefreshTokens(t *testing.T) {
+func TestRegisterCreatesUserAndIssuesTokens(t *testing.T) {
 	handler := newTestHandler()
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"subject":"agent-1","role":"agent"}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"agent@example.com","password":"password123","role":"agent"}`))
+	recorder := httptest.NewRecorder()
+
+	handler.register(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", recorder.Code)
+	}
+
+	var response tokenResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Email != "agent@example.com" || response.Role != "agent" || response.UserID == "" {
+		t.Fatalf("unexpected register response: %+v", response)
+	}
+
+	accessClaims, err := platformauth.ParseAndValidateHS256(response.AccessToken, testJWTSecret, handler.now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("validate access token: %v", err)
+	}
+	if accessClaims.TokenType != "access" || accessClaims.Role != "agent" || accessClaims.Subject != response.UserID {
+		t.Fatalf("unexpected access claims: %+v", accessClaims)
+	}
+}
+
+func TestRegisterRejectsDuplicateEmail(t *testing.T) {
+	handler := newTestHandler()
+
+	first := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"client@example.com","password":"password123","role":"client"}`))
+	firstRecorder := httptest.NewRecorder()
+	handler.register(firstRecorder, first)
+
+	second := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBufferString(`{"email":"client@example.com","password":"password123","role":"client"}`))
+	secondRecorder := httptest.NewRecorder()
+	handler.register(secondRecorder, second)
+
+	if secondRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", secondRecorder.Code)
+	}
+}
+
+func TestLoginReturnsTokensForStoredUser(t *testing.T) {
+	handler := newTestHandler()
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	_, err = handler.repo.CreateUser(context.Background(), User{
+		ID:           "user_123",
+		Email:        "agent@example.com",
+		PasswordHash: string(passwordHash),
+		Role:         "agent",
+		Status:       userStatusActive,
+		CreatedAt:    handler.now(),
+		UpdatedAt:    handler.now(),
+	})
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"email":"agent@example.com","password":"password123"}`))
 	recorder := httptest.NewRecorder()
 
 	handler.login(recorder, request)
@@ -34,45 +99,24 @@ func TestLoginIssuesAccessAndRefreshTokens(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
 	}
-
-	var response tokenResponse
-	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-
-	accessClaims, err := platformauth.ParseAndValidateHS256(response.AccessToken, testJWTSecret, handler.now().Add(time.Minute))
-	if err != nil {
-		t.Fatalf("validate access token: %v", err)
-	}
-	if accessClaims.TokenType != "access" || accessClaims.Role != "agent" || accessClaims.Subject != "agent-1" {
-		t.Fatalf("unexpected access claims: %+v", accessClaims)
-	}
-
-	refreshClaims, err := platformauth.ParseAndValidateHS256(response.RefreshToken, testJWTSecret, handler.now().Add(time.Minute))
-	if err != nil {
-		t.Fatalf("validate refresh token: %v", err)
-	}
-	if refreshClaims.TokenType != "refresh" || refreshClaims.Role != "agent" || refreshClaims.Subject != "agent-1" {
-		t.Fatalf("unexpected refresh claims: %+v", refreshClaims)
-	}
-}
-
-func TestLoginRejectsInvalidRole(t *testing.T) {
-	handler := newTestHandler()
-
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"subject":"user-1","role":"owner"}`))
-	recorder := httptest.NewRecorder()
-
-	handler.login(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", recorder.Code)
-	}
 }
 
 func TestRefreshRotatesTokens(t *testing.T) {
 	handler := newTestHandler()
-	loginResponse, err := handler.issueTokenPair("client-1", "client")
+	user := User{
+		ID:           "user_123",
+		Email:        "client@example.com",
+		PasswordHash: "ignored",
+		Role:         "client",
+		Status:       userStatusActive,
+		CreatedAt:    handler.now(),
+		UpdatedAt:    handler.now(),
+	}
+	_, err := handler.repo.CreateUser(context.Background(), user)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	loginResponse, err := handler.issueTokenPair(user)
 	if err != nil {
 		t.Fatalf("issue token pair: %v", err)
 	}
@@ -97,7 +141,20 @@ func TestRefreshRotatesTokens(t *testing.T) {
 
 func TestRefreshRejectsAccessToken(t *testing.T) {
 	handler := newTestHandler()
-	loginResponse, err := handler.issueTokenPair("client-1", "client")
+	user := User{
+		ID:           "user_123",
+		Email:        "client@example.com",
+		PasswordHash: "ignored",
+		Role:         "client",
+		Status:       userStatusActive,
+		CreatedAt:    handler.now(),
+		UpdatedAt:    handler.now(),
+	}
+	_, err := handler.repo.CreateUser(context.Background(), user)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	loginResponse, err := handler.issueTokenPair(user)
 	if err != nil {
 		t.Fatalf("issue token pair: %v", err)
 	}

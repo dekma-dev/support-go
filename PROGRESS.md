@@ -235,9 +235,11 @@
 - Verification status: `go test ./...` passed in `backend/`.
 
 ### Update
-- Added demo auth endpoints for JWT issuance and rotation:
+- Replaced demo auth flow with real Postgres-backed identity flow:
+  - `POST /api/v1/auth/register`
   - `POST /api/v1/auth/login`
   - `POST /api/v1/auth/refresh`
-- Backend now issues distinct access/refresh HS256 tokens with `token_type`, `sub`, `role`, `exp`, `nbf`, `iat`, `jti`.
+- Added `users` migration with `email`, `password_hash`, `role`, `status`, timestamps and unique email constraint.
+- Backend now hashes passwords with bcrypt and issues distinct access/refresh HS256 tokens with `token_type`, `sub`, `role`, `exp`, `nbf`, `iat`, `jti`.
 - API middleware now accepts access tokens only; refresh tokens are rejected with `401`.
-- Frontend stores session in `localStorage`, calls login/refresh endpoints, and attaches `Authorization: Bearer <access_token>` automatically on API requests.
+- Frontend stores session in `localStorage`, supports register/login/refresh, and attaches `Authorization: Bearer <access_token>` automatically on API requests.

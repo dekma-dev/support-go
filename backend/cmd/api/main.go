@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"support-go/backend/internal/health"
 	"support-go/backend/internal/identity"
+	identitypostgres "support-go/backend/internal/identity/postgres"
 	platformauth "support-go/backend/internal/platform/auth"
 	"support-go/backend/internal/platform/config"
 	platformhttp "support-go/backend/internal/platform/http"
@@ -64,7 +65,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	health.RegisterRoutes(mux)
-	identity.RegisterRoutes(mux, cfg.JWTSecret)
+	identityRepository := identitypostgres.NewRepository(dbPool)
+	identity.RegisterRoutes(mux, identityRepository, cfg.JWTSecret)
 
 	ticketRepository := postgres.NewRepository(dbPool)
 	commentRepository := postgres.NewCommentRepository(dbPool)
