@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,9 +47,18 @@ func main() {
 	defer ticketReader.Close()
 	defer commentReader.Close()
 
+	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	go consumeLoop(ctx, logger, ticketReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
-	go consumeLoop(ctx, logger, commentReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		consumeLoop(ctx, logger, ticketReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
+	}()
+	go func() {
+		defer wg.Done()
+		consumeLoop(ctx, logger, commentReader, notificationService, dlqWriter, cfg.NotificationDLQTopic, retryPolicy, errCh)
+	}()
 
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutdownSignal, syscall.SIGINT, syscall.SIGTERM)
@@ -57,14 +67,26 @@ func main() {
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error("worker consumer crashed", "error", err)
-			os.Exit(1)
 		}
 	case sig := <-shutdownSignal:
 		logger.Info("shutdown signal received", "signal", sig.String())
 	}
 
 	cancel()
-	time.Sleep(500 * time.Millisecond)
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Info("all consumers stopped gracefully")
+	case <-time.After(10 * time.Second):
+		logger.Warn("consumer shutdown timed out after 10s")
+	}
+
 	logger.Info("notification worker stopped")
 }
 

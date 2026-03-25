@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	platformauth "support-go/backend/internal/platform/auth"
 )
 
 type Handler struct {
@@ -22,7 +24,6 @@ type createTicketRequest struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Priority    Priority `json:"priority"`
-	RequesterID string   `json:"requester_id"`
 	SLADueAt    *string  `json:"sla_due_at"`
 }
 
@@ -41,7 +42,6 @@ type statusTicketRequest struct {
 }
 
 type createCommentRequest struct {
-	AuthorID   string `json:"author_id"`
 	Body       string `json:"body"`
 	IsInternal bool   `json:"is_internal"`
 }
@@ -131,6 +131,12 @@ func (handler *Handler) ticketByID(writer http.ResponseWriter, request *http.Req
 }
 
 func (handler *Handler) createTicket(writer http.ResponseWriter, request *http.Request) {
+	claims, ok := platformauth.ClaimsFromContext(request.Context())
+	if !ok || claims.Subject == "" {
+		writeJSON(writer, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+		return
+	}
+
 	var body createTicketRequest
 	if err := decodeJSON(request, &body); err != nil {
 		writeValidationError(writer, err.Error())
@@ -152,7 +158,7 @@ func (handler *Handler) createTicket(writer http.ResponseWriter, request *http.R
 		Title:       body.Title,
 		Description: body.Description,
 		Priority:    body.Priority,
-		RequesterID: body.RequesterID,
+		RequesterID: claims.Subject,
 		SLADueAt:    slaDueAt,
 	})
 	if err != nil {
@@ -184,6 +190,11 @@ func (handler *Handler) patchTicket(writer http.ResponseWriter, request *http.Re
 }
 
 func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.Request, id string) {
+	claims, ok := platformauth.ClaimsFromContext(request.Context())
+	if !ok || claims.Subject == "" {
+		writeJSON(writer, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+		return
+	}
 	if !canManageAssignmentsAndStatus(roleFromRequest(request)) {
 		writeJSON(writer, http.StatusForbidden, errorResponse{Error: "forbidden: requires role agent or admin"})
 		return
@@ -195,7 +206,7 @@ func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	ticketValue, err := handler.service.Assign(id, body.AssigneeID)
+	ticketValue, err := handler.service.Assign(id, body.AssigneeID, claims.Subject)
 	if err != nil {
 		handleServiceError(writer, err)
 		return
@@ -205,6 +216,11 @@ func (handler *Handler) assignTicket(writer http.ResponseWriter, request *http.R
 }
 
 func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *http.Request, id string) {
+	claims, ok := platformauth.ClaimsFromContext(request.Context())
+	if !ok || claims.Subject == "" {
+		writeJSON(writer, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+		return
+	}
 	if !canManageAssignmentsAndStatus(roleFromRequest(request)) {
 		writeJSON(writer, http.StatusForbidden, errorResponse{Error: "forbidden: requires role agent or admin"})
 		return
@@ -216,7 +232,7 @@ func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *
 		return
 	}
 
-	ticketValue, err := handler.service.ChangeStatus(id, body.Status)
+	ticketValue, err := handler.service.ChangeStatus(id, body.Status, claims.Subject)
 	if err != nil {
 		handleServiceError(writer, err)
 		return
@@ -226,6 +242,12 @@ func (handler *Handler) changeTicketStatus(writer http.ResponseWriter, request *
 }
 
 func (handler *Handler) createComment(writer http.ResponseWriter, request *http.Request, id string) {
+	claims, ok := platformauth.ClaimsFromContext(request.Context())
+	if !ok || claims.Subject == "" {
+		writeJSON(writer, http.StatusUnauthorized, errorResponse{Error: "unauthorized"})
+		return
+	}
+
 	var body createCommentRequest
 	if err := decodeJSON(request, &body); err != nil {
 		writeValidationError(writer, err.Error())
@@ -240,7 +262,7 @@ func (handler *Handler) createComment(writer http.ResponseWriter, request *http.
 
 	commentValue, err := handler.service.AddComment(AddCommentInput{
 		TicketID:   id,
-		AuthorID:   body.AuthorID,
+		AuthorID:   claims.Subject,
 		Body:       body.Body,
 		IsInternal: body.IsInternal,
 	})

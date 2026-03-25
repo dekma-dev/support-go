@@ -35,12 +35,29 @@ export type Ticket = {
   closed_at?: string;
 };
 
+export type Comment = {
+  id: string;
+  ticket_id: string;
+  author_id: string;
+  body: string;
+  is_internal: boolean;
+  created_at: string;
+};
+
+export type TicketEvent = {
+  id: string;
+  ticket_id: string;
+  actor_id: string;
+  event_type: string;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type CreateTicketInput = {
   title: string;
   description: string;
-  requester_id: string;
   priority: TicketPriority;
-  sla_due_at?: string;
 };
 
 type APIErrorResponse = {
@@ -87,8 +104,14 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
+// --- Tickets ---
+
 export function listTickets() {
   return request<Ticket[]>("/api/v1/tickets");
+}
+
+export function getTicket(id: string) {
+  return request<Ticket>(`/api/v1/tickets/${id}`);
 }
 
 export function createTicket(input: CreateTicketInput) {
@@ -97,6 +120,54 @@ export function createTicket(input: CreateTicketInput) {
     body: JSON.stringify(input),
   });
 }
+
+export function updateTicket(
+  id: string,
+  input: { title?: string; description?: string; priority?: TicketPriority },
+) {
+  return request<Ticket>(`/api/v1/tickets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function assignTicket(id: string, assigneeId: string) {
+  return request<Ticket>(`/api/v1/tickets/${id}/assign`, {
+    method: "PATCH",
+    body: JSON.stringify({ assignee_id: assigneeId }),
+  });
+}
+
+export function changeTicketStatus(id: string, status: TicketStatus) {
+  return request<Ticket>(`/api/v1/tickets/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+// --- Comments ---
+
+export function listComments(ticketId: string) {
+  return request<Comment[]>(`/api/v1/tickets/${ticketId}/comments`);
+}
+
+export function addComment(
+  ticketId: string,
+  input: { body: string; is_internal: boolean },
+) {
+  return request<Comment>(`/api/v1/tickets/${ticketId}/comments`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// --- Events ---
+
+export function listEvents(ticketId: string) {
+  return request<TicketEvent[]>(`/api/v1/tickets/${ticketId}/events`);
+}
+
+// --- Auth / Session ---
 
 export function readStoredSession(): AuthSession | null {
   if (typeof window === "undefined") {
@@ -165,10 +236,14 @@ export async function refreshSession(refreshToken?: string) {
     throw new Error("No refresh token available");
   }
 
-  const session = await request<AuthSession>("/api/v1/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ refresh_token: token }),
-  }, { withAuth: false });
+  const session = await request<AuthSession>(
+    "/api/v1/auth/refresh",
+    {
+      method: "POST",
+      body: JSON.stringify({ refresh_token: token }),
+    },
+    { withAuth: false },
+  );
   persistSession(session);
   return session;
 }

@@ -74,7 +74,11 @@ func main() {
 	ticketService := ticket.NewServiceWithDependenciesAndPublisher(ticketRepository, commentRepository, auditRepository, publisher)
 	ticket.RegisterRoutes(mux, ticketService)
 
-	handler := platformauth.NewJWTMiddleware(cfg.JWTSecret)(mux)
+	corsOrigins := platformkafka.ParseBrokers(cfg.CORSOrigins) // reuse comma-split
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"*"}
+	}
+	handler := platformhttp.NewCORSMiddleware(corsOrigins)(platformauth.NewJWTMiddleware(cfg.JWTSecret)(mux))
 	server := platformhttp.NewServer(cfg.HTTPPort, handler)
 	serverErr := make(chan error, 1)
 

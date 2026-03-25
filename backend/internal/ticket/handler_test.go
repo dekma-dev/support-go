@@ -83,20 +83,20 @@ func createTicketForHandlerTest(t *testing.T, mux http.Handler) string {
 	t.Helper()
 
 	body := map[string]any{
-		"title":        "Login issue",
-		"description":  "Cannot login to dashboard",
-		"priority":     "high",
-		"requester_id": "user-1",
+		"title":       "Login issue",
+		"description": "Cannot login to dashboard",
+		"priority":    "high",
 	}
 
 	payload, _ := json.Marshal(body)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/tickets", bytes.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
+	setRoleToken(request, "client")
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusCreated {
-		t.Fatalf("expected 201 on create, got %d", recorder.Code)
+		t.Fatalf("expected 201 on create, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 
 	var created map[string]any
@@ -122,9 +122,10 @@ func signedToken(role string) string {
 		"typ": "JWT",
 	})
 	payloadRaw, _ := json.Marshal(map[string]any{
-		"sub":  "test-user",
-		"role": strings.ToLower(strings.TrimSpace(role)),
-		"exp":  time.Now().Add(1 * time.Hour).Unix(),
+		"sub":        "test-user",
+		"role":       strings.ToLower(strings.TrimSpace(role)),
+		"token_type": "access",
+		"exp":        time.Now().Add(1 * time.Hour).Unix(),
 	})
 
 	headerPart := base64.RawURLEncoding.EncodeToString(headerRaw)
@@ -150,8 +151,8 @@ func TestAssignRequiresAgentOrAdminRole(t *testing.T) {
 	requestWithoutRole.Header.Set("Content-Type", "application/json")
 	recorderWithoutRole := httptest.NewRecorder()
 	mux.ServeHTTP(recorderWithoutRole, requestWithoutRole)
-	if recorderWithoutRole.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 without role, got %d", recorderWithoutRole.Code)
+	if recorderWithoutRole.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without token, got %d", recorderWithoutRole.Code)
 	}
 
 	requestClientRole := httptest.NewRequest(http.MethodPatch, "/api/v1/tickets/"+id+"/assign", bytes.NewReader(payload))
@@ -202,16 +203,17 @@ func TestCommentsVisibilityAndEventsEndpoint(t *testing.T) {
 	mux := setupTicketRouter()
 	id := createTicketForHandlerTest(t, mux)
 
-	publicComment := []byte(`{"author_id":"user-1","body":"Need update","is_internal":false}`)
+	publicComment := []byte(`{"body":"Need update","is_internal":false}`)
 	requestPublic := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/"+id+"/comments", bytes.NewReader(publicComment))
 	requestPublic.Header.Set("Content-Type", "application/json")
+	setRoleToken(requestPublic, "client")
 	recorderPublic := httptest.NewRecorder()
 	mux.ServeHTTP(recorderPublic, requestPublic)
 	if recorderPublic.Code != http.StatusCreated {
-		t.Fatalf("expected 201 for public comment, got %d", recorderPublic.Code)
+		t.Fatalf("expected 201 for public comment, got %d: %s", recorderPublic.Code, recorderPublic.Body.String())
 	}
 
-	internalComment := []byte(`{"author_id":"agent-1","body":"Internal note","is_internal":true}`)
+	internalComment := []byte(`{"body":"Internal note","is_internal":true}`)
 	requestInternalByClient := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/"+id+"/comments", bytes.NewReader(internalComment))
 	requestInternalByClient.Header.Set("Content-Type", "application/json")
 	setRoleToken(requestInternalByClient, "client")
@@ -261,6 +263,7 @@ func TestCommentsVisibilityAndEventsEndpoint(t *testing.T) {
 	}
 
 	requestEvents := httptest.NewRequest(http.MethodGet, "/api/v1/tickets/"+id+"/events", nil)
+	setRoleToken(requestEvents, "agent")
 	recorderEvents := httptest.NewRecorder()
 	mux.ServeHTTP(recorderEvents, requestEvents)
 	if recorderEvents.Code != http.StatusOK {

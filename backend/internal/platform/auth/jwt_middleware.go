@@ -10,17 +10,28 @@ import (
 
 type claimsContextKey struct{}
 
+func isPublicRoute(path string) bool {
+	if strings.HasPrefix(path, "/api/v1/auth/") {
+		return true
+	}
+	switch path {
+	case "/healthz", "/readyz":
+		return true
+	}
+	return false
+}
+
 func NewJWTMiddleware(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			if strings.HasPrefix(request.URL.Path, "/api/v1/auth/") {
+			if isPublicRoute(request.URL.Path) {
 				next.ServeHTTP(writer, request)
 				return
 			}
 
 			rawAuth := strings.TrimSpace(request.Header.Get("Authorization"))
 			if rawAuth == "" {
-				next.ServeHTTP(writer, request)
+				writeUnauthorized(writer)
 				return
 			}
 

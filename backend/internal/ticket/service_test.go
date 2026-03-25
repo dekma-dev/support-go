@@ -49,7 +49,7 @@ func TestServiceAssignAndClose(t *testing.T) {
 		t.Fatalf("unexpected create error: %v", err)
 	}
 
-	assigned, err := service.Assign(created.ID, "agent-1")
+	assigned, err := service.Assign(created.ID, "agent-1", "admin-1")
 	if err != nil {
 		t.Fatalf("unexpected assign error: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestServiceAssignAndClose(t *testing.T) {
 		t.Fatalf("expected assignee agent-1, got %s", assigned.AssigneeID)
 	}
 
-	closed, err := service.ChangeStatus(created.ID, ticket.StatusClosed)
+	closed, err := service.ChangeStatus(created.ID, ticket.StatusClosed, "admin-1")
 	if err != nil {
 		t.Fatalf("unexpected status error: %v", err)
 	}

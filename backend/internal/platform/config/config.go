@@ -10,6 +10,7 @@ type Config struct {
 	HTTPPort                  string
 	DatabaseURL               string
 	JWTSecret                 string
+	CORSOrigins               string
 	KafkaBrokers              string
 	NotificationConsumerGroup string
 	NotificationRetryMax      int
@@ -23,6 +24,7 @@ func Load() Config {
 		HTTPPort:                  getEnv("HTTP_PORT", "8080"),
 		DatabaseURL:               getEnv("DATABASE_URL", ""),
 		JWTSecret:                 getEnv("JWT_SECRET", ""),
+		CORSOrigins:               getEnv("CORS_ORIGINS", "*"),
 		KafkaBrokers:              getEnv("KAFKA_BROKERS", ""),
 		NotificationConsumerGroup: getEnv("KAFKA_NOTIFICATION_GROUP", "support-go-notification-worker"),
 		NotificationRetryMax:      getEnvInt("NOTIFICATION_RETRY_MAX", 3),

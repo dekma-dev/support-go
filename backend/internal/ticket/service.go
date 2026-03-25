@@ -195,7 +195,7 @@ func (service *Service) Update(id string, input UpdateInput) (Ticket, error) {
 	return ticket, nil
 }
 
-func (service *Service) Assign(id string, assigneeID string) (Ticket, error) {
+func (service *Service) Assign(id string, assigneeID string, actorID string) (Ticket, error) {
 	ticket, err := service.GetByID(id)
 	if err != nil {
 		return Ticket{}, err
@@ -215,7 +215,7 @@ func (service *Service) Assign(id string, assigneeID string) (Ticket, error) {
 
 	_ = service.recordEvent(
 		ticket.ID,
-		trimmedAssignee,
+		actorID,
 		"ticket.assigned",
 		map[string]any{"assignee_id": beforeAssignee},
 		map[string]any{"assignee_id": ticket.AssigneeID},
@@ -228,7 +228,7 @@ func (service *Service) Assign(id string, assigneeID string) (Ticket, error) {
 	return ticket, nil
 }
 
-func (service *Service) ChangeStatus(id string, status Status) (Ticket, error) {
+func (service *Service) ChangeStatus(id string, status Status, actorID string) (Ticket, error) {
 	if err := ValidateStatus(status); err != nil {
 		return Ticket{}, err
 	}
@@ -254,7 +254,7 @@ func (service *Service) ChangeStatus(id string, status Status) (Ticket, error) {
 
 	_ = service.recordEvent(
 		ticket.ID,
-		ticket.RequesterID,
+		actorID,
 		"ticket.status.changed",
 		map[string]any{"status": beforeStatus},
 		map[string]any{"status": ticket.Status},
