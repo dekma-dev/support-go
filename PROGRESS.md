@@ -243,3 +243,53 @@
 - Backend now hashes passwords with bcrypt and issues distinct access/refresh HS256 tokens with `token_type`, `sub`, `role`, `exp`, `nbf`, `iat`, `jti`.
 - API middleware now accepts access tokens only; refresh tokens are rejected with `401`.
 - Frontend stores session in `localStorage`, supports register/login/refresh, and attaches `Authorization: Bearer <access_token>` automatically on API requests.
+
+## 2026-04-07
+
+### Done — Frontend Redesign Phase 1: "Synthetic Command" UI
+
+Complete visual overhaul of the React frontend from plain CSS to a dark cyberpunk/command-center design system.
+
+#### Infrastructure
+- Installed Tailwind CSS v4 with `@tailwindcss/vite` plugin.
+- Configured full "Synthetic Command" theme in `frontend/src/styles.css`:
+  - Palette: cyan primary (`#00e5ff`), purple secondary (`#e9b3ff`), mint tertiary (`#a3ffdd`), dark bg (`#0b1326`).
+  - Fonts: Space Grotesk (headlines), Inter (body/labels).
+  - Custom utilities: `glass-card`, `glass-panel`, `glow-border`, `shimmer-border`, status glows.
+- Added Google Fonts (Space Grotesk, Inter) and Material Symbols Outlined to `frontend/index.html`.
+- Updated `frontend/vite.config.ts` with Tailwind Vite plugin.
+
+#### New Shared Components
+- `frontend/src/components/Icon.tsx` — Material Symbols wrapper.
+- `frontend/src/components/TopNav.tsx` — top navigation bar with search, notifications, settings, avatar.
+- `frontend/src/components/Sidebar.tsx` — side navigation with role display, nav items, create ticket button, logout.
+- `frontend/src/components/Layout.tsx` — shell layout (sidebar + topnav + content slot).
+
+#### New / Redesigned Pages
+- `frontend/src/pages/LoginPage.tsx` — full-screen "System Authentication" page with corner accents, shimmer edges, data bar footer.
+- `frontend/src/pages/DashboardHome.tsx` — "Welcome to Command Center" hero with search bar, action buttons, info cards (Live Status, Activity, Documentation).
+- `frontend/src/pages/TicketListPage.tsx` — "TICKET_REGISTRY" table with status/priority badges, stats cards, filter bar, FAB.
+- `frontend/src/TicketDetail.tsx` — 3-panel layout: event timeline (left), ticket info + comments (center), staff controls (right).
+
+#### Routing & Auth Flow
+- `frontend/src/App.tsx` rewritten:
+  - Unauthenticated → shows `LoginPage`.
+  - Authenticated → `Layout` shell with sidebar/topnav.
+  - Routes: `/dashboard`, `/tickets`, `/tickets/:id`.
+  - Root `/` redirects to `/dashboard`.
+- Removed inline `SessionCard` component (replaced by full Login page).
+
+#### Verification
+- `npm run build` passes cleanly (tsc + vite build).
+
+### Notes / Limits
+- User Management and Knowledge Base pages not yet implemented (Phase 2).
+- Dashboard (Agent/Operations Control) page not yet implemented (Phase 2).
+- Filters and search are UI-only placeholders (no backend filter endpoints yet).
+- Old `frontend/src/SessionCard.tsx` and `frontend/src/TicketList.tsx` are now unused (superseded by new pages).
+
+### Next Step (planned)
+- Implement remaining pages: Agent Dashboard, User Management, Knowledge Base.
+- Remove old unused components (`SessionCard.tsx`, `TicketList.tsx`).
+- Add create ticket modal/page.
+- Connect to staging server for live testing.

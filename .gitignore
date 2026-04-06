@@ -21,3 +21,6 @@ frontend/*.tsbuildinfo
 backend/bin/
 backend/coverage.out
 backend/.cache/
+
+# Credentials
+CREDENTIALS.md
