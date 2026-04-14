@@ -293,3 +293,75 @@ Complete visual overhaul of the React frontend from plain CSS to a dark cyberpun
 - Remove old unused components (`SessionCard.tsx`, `TicketList.tsx`).
 - Add create ticket modal/page.
 - Connect to staging server for live testing.
+
+## 2026-04-14
+
+### Done — Frontend Redesign Phase 2 + Create Ticket page
+
+Completed remaining pages from the mockup set and added the missing create flow.
+
+- `frontend/src/pages/AgentDashboard.tsx` — "Operations Control" agent dashboard: stats (resolved/active/load), list of tickets assigned to current user, notifications panel (urgent tickets), system log.
+- `frontend/src/pages/UserManagement.tsx` — "Personnel Management" with stats cards and a static personnel table seeded from migrations (until backend list-users endpoint is added). Admin-only access gate.
+- `frontend/src/pages/KnowledgeBase.tsx` — "Archive & Protocols" with article cards, category filters, floating stats bar (static content for now).
+- `frontend/src/pages/CreateTicketPage.tsx` — new ticket form with title, description, priority selector. Navigates to the created ticket on success.
+- `frontend/src/App.tsx` — wired new routes: `/users`, `/knowledge`, `/tickets/new`. Dashboard route now branches: `AgentDashboard` for agent/admin, `DashboardHome` for client.
+- Removed now-unused files: `frontend/src/SessionCard.tsx`, `frontend/src/TicketList.tsx`, `backend/cmd/seedhash/`.
+
+### Done — Seed users migration
+
+- `backend/migrations/000004_seed_users.up.sql` / `.down.sql` — seed 3 test users (admin / agent / client) with bcrypt password hashes. Credentials kept locally in `CREDENTIALS.md` (gitignored).
+
+### Done — Documentation split
+
+- `INSTALL.md` split into `INSTALL-windows.md` (local dev setup) and `INSTALL-linux.md` (production install with security checks: ufw, file permissions, `openssl rand` secrets, DNS verification, migration loop, security checklist).
+- New `RUN.md` — day-to-day Windows dev startup (Docker infra + backend + frontend).
+- New `UPDATE-linux.md` — production update runbook: `git pull`, review changes, `--build` rebuild, migrations, verification, rollback, image cleanup.
+
+### Done — Stage 1: Observability (Foundation debt)
+
+Closed the observability gap from the architecture roadmap.
+
+New platform packages:
+- `backend/internal/platform/http/request_id.go` — generates `X-Request-ID` if absent, stores in context, echoes in response header.
+- `backend/internal/platform/http/access_log.go` — structured JSON access logs (method, path, status, bytes, duration, request_id, remote_addr) via `slog`.
+- `backend/internal/platform/http/metrics_middleware.go` — increments Prometheus counters/histograms, normalizes dynamic paths (`/tickets/{id}` template) to keep label cardinality bounded.
+- `backend/internal/platform/logging/logger.go` — context-aware logger with request_id fallback.
+- `backend/internal/platform/metrics/metrics.go` — Prometheus registry + `/metrics` handler. Metrics exposed:
+  - `support_go_http_requests_total{method,path,status}` — counter
+  - `support_go_http_request_duration_seconds{method,path}` — histogram
+  - `support_go_tickets_created_total` — counter
+  - `support_go_tickets_by_status{status}` — gauge
+
+Wiring:
+- `backend/cmd/api/main.go` — new middleware chain: `mux → JWT → AccessLog → Metrics → RequestID → CORS`. Registered `/metrics` endpoint before JWT whitelist.
+- `backend/internal/platform/auth/jwt_middleware.go` — `/metrics` added to public routes whitelist.
+- `backend/internal/ticket/service.go` — increments `TicketsCreatedTotal` in `Create()`.
+- `backend/go.mod` — added `github.com/prometheus/client_golang v1.20.5` + transitive deps.
+
+### Done — Stage 2: Ticket List Filters (Core Ticket Flow debt)
+
+Added query-parameter filtering and pagination to `GET /api/v1/tickets`.
+
+Backend:
+- `backend/internal/ticket/service.go` — new types: `ListFilter`, `SortOrder`, `ListResult`. New method `ListWithFilter(ctx, filter)` with validation (limit 1-200, offset ≥0, default sort).
+- `backend/internal/ticket/postgres/repository.go` — `ListWithFilter` with dynamic WHERE builder: `status IN (...)`, `priority IN (...)`, `assignee_id =`, `title/description ILIKE`, sort whitelist, `LIMIT/OFFSET`. Separate `COUNT(*)` query for total.
+- `backend/internal/ticket/memory/repository.go` — same contract for test parity.
+- `backend/internal/ticket/handler.go` — query param parsing: `status=a,b&priority=high,urgent&assignee_id=me&search=...&limit=50&offset=0&sort=created_at_desc`. Special value `assignee_id=me` resolves to `claims.Subject` from JWT.
+
+**Breaking change:** `GET /api/v1/tickets` now returns `{items, total, limit, offset}` instead of a bare array.
+
+Frontend:
+- `frontend/src/api.ts` — new types `ListTicketsFilter`, `TicketListResponse`. `listTickets(filter?)` builds query string.
+- `frontend/src/pages/TicketListPage.tsx` — stateful filter mode (`all` / `high_priority` / `mine`), buttons actually call API with matching filters. "Assigned to Me" hidden for clients. `total` now comes from response.
+- `frontend/src/pages/AgentDashboard.tsx` — updated to new response shape.
+
+### Verification needed
+- `cd backend && go mod tidy` — pull prometheus deps into go.sum.
+- `go run ./cmd/api` — check that /metrics returns Prometheus format.
+- `npm run build` frontend — verify no TS errors after API contract change.
+
+### Next Step (planned)
+- SLA logic: enforce `sla_due_at` checks, surface breaches on tickets (architecture Stage 4).
+- Rate limit middleware via Redis.
+- CI / linting workflow.
+- Realtime updates (WebSocket/SSE) — still needs product decision per architecture §13.
