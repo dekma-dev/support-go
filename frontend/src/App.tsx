@@ -6,6 +6,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { DashboardHome } from "./pages/DashboardHome";
 import { AgentDashboard } from "./pages/AgentDashboard";
 import { TicketListPage } from "./pages/TicketListPage";
+import { CreateTicketPage } from "./pages/CreateTicketPage";
 import { TicketDetail } from "./TicketDetail";
 import { UserManagement } from "./pages/UserManagement";
 import { KnowledgeBase } from "./pages/KnowledgeBase";
@@ -32,6 +33,7 @@ export function App() {
           element={isStaff ? <AgentDashboard session={session} /> : <DashboardHome />}
         />
         <Route path="/tickets" element={<TicketListPage session={session} />} />
+        <Route path="/tickets/new" element={<CreateTicketPage />} />
         <Route path="/tickets/:id" element={<TicketDetail session={session} />} />
         <Route path="/users" element={<UserManagement session={session} />} />
         <Route path="/knowledge" element={<KnowledgeBase />} />

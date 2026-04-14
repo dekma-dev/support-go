@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
-import { listTickets, type AuthSession, type Ticket, type TicketPriority, type TicketStatus } from "../api";
+import { listTickets, type AuthSession, type ListTicketsFilter, type Ticket, type TicketPriority, type TicketStatus } from "../api";
+
+type FilterMode = "all" | "high_priority" | "mine";
 
 function statusBadge(status: TicketStatus) {
   const map: Record<TicketStatus, { bg: string; text: string; glow: string }> = {
@@ -48,23 +50,43 @@ function timeAgo(dateStr: string) {
 
 export function TicketListPage({ session }: { session: AuthSession | null }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [mode, setMode] = useState<FilterMode>("all");
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setTickets(await listTickets());
+      setError("");
+
+      const filter: ListTicketsFilter = { sort: "created_at_desc", limit: 100 };
+      if (mode === "high_priority") {
+        filter.priority = ["high", "urgent"];
+      } else if (mode === "mine" && session) {
+        filter.assignee_id = "me";
+      }
+
+      const response = await listTickets(filter);
+      setTickets(response.items);
+      setTotal(response.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tickets");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode, session]);
 
   useEffect(() => { load(); }, [load]);
 
   const openCount = tickets.filter((t) => t.status !== "resolved" && t.status !== "closed").length;
+
+  const filterBtnClass = (active: boolean) =>
+    `px-4 py-2 font-label font-bold text-[10px] tracking-widest uppercase rounded-sm border flex items-center gap-2 transition-colors ${
+      active
+        ? "bg-sc-surface-high text-sc-primary border-sc-primary/20"
+        : "bg-sc-surface-lowest text-sc-on-surface-variant hover:text-sc-primary border-sc-outline-variant/15"
+    }`;
 
   return (
     <div className="p-6 space-y-6">
@@ -84,23 +106,25 @@ export function TicketListPage({ session }: { session: AuthSession | null }) {
           </div>
           <div className="glass-card shimmer-border px-6 py-3 rounded-lg flex flex-col">
             <span className="text-[10px] font-label font-bold text-sc-on-surface-variant/60 tracking-widest uppercase">Total</span>
-            <span className="text-2xl font-headline font-bold text-sc-tertiary">{tickets.length}</span>
+            <span className="text-2xl font-headline font-bold text-sc-tertiary">{total}</span>
           </div>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <button className="px-4 py-2 bg-sc-surface-high text-sc-primary font-label font-bold text-[10px] tracking-widest uppercase rounded-sm border border-sc-primary/20 flex items-center gap-2">
+        <button onClick={() => setMode("all")} className={filterBtnClass(mode === "all")}>
           <Icon name="filter_list" className="text-xs" />
-          All Status
+          All Tickets
         </button>
-        <button className="px-4 py-2 bg-sc-surface-lowest text-sc-on-surface-variant hover:text-sc-primary transition-colors font-label font-bold text-[10px] tracking-widest uppercase rounded-sm border border-sc-outline-variant/15">
+        <button onClick={() => setMode("high_priority")} className={filterBtnClass(mode === "high_priority")}>
           High Priority
         </button>
-        <button className="px-4 py-2 bg-sc-surface-lowest text-sc-on-surface-variant hover:text-sc-primary transition-colors font-label font-bold text-[10px] tracking-widest uppercase rounded-sm border border-sc-outline-variant/15">
-          Assigned to Me
-        </button>
+        {session && (session.role === "agent" || session.role === "admin") && (
+          <button onClick={() => setMode("mine")} className={filterBtnClass(mode === "mine")}>
+            Assigned to Me
+          </button>
+        )}
         <div className="h-4 w-px bg-sc-outline-variant/30 mx-2" />
         <span className="text-[10px] font-label font-bold text-sc-on-surface-variant/40 tracking-widest uppercase">Sorted by: Latest</span>
       </div>

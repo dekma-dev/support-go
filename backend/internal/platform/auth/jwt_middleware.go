@@ -15,7 +15,7 @@ func isPublicRoute(path string) bool {
 		return true
 	}
 	switch path {
-	case "/healthz", "/readyz":
+	case "/healthz", "/readyz", "/metrics":
 		return true
 	}
 	return false

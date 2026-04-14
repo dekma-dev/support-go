@@ -1,5 +1,7 @@
 # Локальная установка (Windows)
 
+Одноразовая настройка окружения. После этого для повседневного запуска используй [RUN.md](RUN.md).
+
 ## Требования
 
 - Docker Desktop
@@ -19,25 +21,23 @@ docker compose up -d
 docker exec -i support_go_postgres psql -U support -d support_go < C:\wamp\www\support.go\backend\migrations\000001_create_tickets_table.up.sql
 docker exec -i support_go_postgres psql -U support -d support_go < C:\wamp\www\support.go\backend\migrations\000002_create_ticket_comments_events.up.sql
 docker exec -i support_go_postgres psql -U support -d support_go < C:\wamp\www\support.go\backend\migrations\000003_create_users_table.up.sql
+docker exec -i support_go_postgres psql -U support -d support_go < C:\wamp\www\support.go\backend\migrations\000004_seed_users.up.sql
 ```
 
-## 3. Запустить бэкенд
+## 3. Создать .env файл для бэкенда
 
 ```
 cd C:\wamp\www\support.go\backend
 copy .env.example .env
-go run ./cmd/api
 ```
 
-## 4. Запустить фронтенд (в отдельном терминале)
+## 4. Установить зависимости фронтенда
 
 ```
 cd C:\wamp\www\support.go\frontend
 npm install
-npm run dev
 ```
 
-## 5. Открыть
+## Готово
 
-- Фронтенд: http://localhost:5173
-- API health: http://localhost:8080/healthz
+Настройка завершена. Для запуска проекта см. [RUN.md](RUN.md).

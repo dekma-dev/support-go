@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,10 +56,78 @@ func (handler *Handler) ticketsCollection(writer http.ResponseWriter, request *h
 	case http.MethodPost:
 		handler.createTicket(writer, request)
 	case http.MethodGet:
-		writeJSON(writer, http.StatusOK, handler.service.List())
+		handler.listTickets(writer, request)
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (handler *Handler) listTickets(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+
+	filter := ListFilter{
+		Search: strings.TrimSpace(query.Get("search")),
+	}
+
+	for _, raw := range splitCSV(query.Get("status")) {
+		filter.Statuses = append(filter.Statuses, Status(raw))
+	}
+	for _, raw := range splitCSV(query.Get("priority")) {
+		filter.Priorities = append(filter.Priorities, Priority(raw))
+	}
+
+	assignee := strings.TrimSpace(query.Get("assignee_id"))
+	if assignee == "me" {
+		if claims, ok := platformauth.ClaimsFromContext(request.Context()); ok {
+			assignee = claims.Subject
+		} else {
+			assignee = ""
+		}
+	}
+	filter.AssigneeID = assignee
+
+	if rawLimit := query.Get("limit"); rawLimit != "" {
+		n, err := strconv.Atoi(rawLimit)
+		if err != nil || n < 0 {
+			writeValidationError(writer, "limit must be a non-negative integer")
+			return
+		}
+		filter.Limit = n
+	}
+	if rawOffset := query.Get("offset"); rawOffset != "" {
+		n, err := strconv.Atoi(rawOffset)
+		if err != nil || n < 0 {
+			writeValidationError(writer, "offset must be a non-negative integer")
+			return
+		}
+		filter.Offset = n
+	}
+
+	if rawSort := strings.TrimSpace(query.Get("sort")); rawSort != "" {
+		filter.Sort = SortOrder(rawSort)
+	}
+
+	result, err := handler.service.ListWithFilter(request.Context(), filter)
+	if err != nil {
+		handleServiceError(writer, err)
+		return
+	}
+
+	writeJSON(writer, http.StatusOK, result)
+}
+
+func splitCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func (handler *Handler) ticketsWithID(writer http.ResponseWriter, request *http.Request) {

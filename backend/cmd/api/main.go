@@ -18,6 +18,8 @@ import (
 	"support-go/backend/internal/platform/config"
 	platformhttp "support-go/backend/internal/platform/http"
 	platformkafka "support-go/backend/internal/platform/kafka"
+	"support-go/backend/internal/platform/logging"
+	"support-go/backend/internal/platform/metrics"
 	"support-go/backend/internal/ticket"
 	"support-go/backend/internal/ticket/postgres"
 )
@@ -26,6 +28,7 @@ func main() {
 	cfg := config.Load()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+	logging.SetDefault(logger)
 	logger.Info("starting support-go api", "port", cfg.HTTPPort, "env", cfg.Environment)
 
 	if cfg.DatabaseURL == "" {
@@ -50,6 +53,8 @@ func main() {
 	}
 	logger.Info("postgres connected")
 
+	metrics.Register()
+
 	var publisher ticket.EventPublisher
 	var kafkaPublisher *platformkafka.Publisher
 	brokers := platformkafka.ParseBrokers(cfg.KafkaBrokers)
@@ -65,6 +70,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	health.RegisterRoutes(mux)
+	mux.Handle("/metrics", metrics.Handler())
 	identityRepository := identitypostgres.NewRepository(dbPool)
 	identity.RegisterRoutes(mux, identityRepository, cfg.JWTSecret)
 
@@ -78,7 +84,20 @@ func main() {
 	if len(corsOrigins) == 0 {
 		corsOrigins = []string{"*"}
 	}
-	handler := platformhttp.NewCORSMiddleware(corsOrigins)(platformauth.NewJWTMiddleware(cfg.JWTSecret)(mux))
+
+	// Middleware chain (innermost → outermost):
+	//   mux → JWT → AccessLog → Metrics → RequestID → CORS
+	// RequestID runs early so downstream middlewares and handlers see the ID.
+	handler := platformhttp.NewCORSMiddleware(corsOrigins)(
+		platformhttp.NewRequestIDMiddleware()(
+			platformhttp.NewMetricsMiddleware()(
+				platformhttp.NewAccessLogMiddleware(logger)(
+					platformauth.NewJWTMiddleware(cfg.JWTSecret)(mux),
+				),
+			),
+		),
+	)
+
 	server := platformhttp.NewServer(cfg.HTTPPort, handler)
 	serverErr := make(chan error, 1)
 

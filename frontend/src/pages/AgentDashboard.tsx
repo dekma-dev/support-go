@@ -20,7 +20,8 @@ export function AgentDashboard({ session }: { session: AuthSession }) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setTickets(await listTickets());
+      const response = await listTickets({ limit: 200 });
+      setTickets(response.items);
     } catch {
       // silent
     } finally {

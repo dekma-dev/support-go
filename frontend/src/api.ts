@@ -60,6 +60,23 @@ export type CreateTicketInput = {
   priority: TicketPriority;
 };
 
+export type ListTicketsFilter = {
+  status?: TicketStatus[];
+  priority?: TicketPriority[];
+  assignee_id?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  sort?: "created_at_desc" | "created_at_asc" | "updated_at_desc" | "updated_at_asc";
+};
+
+export type TicketListResponse = {
+  items: Ticket[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 type APIErrorResponse = {
   error?: string;
 };
@@ -106,8 +123,19 @@ async function request<T>(
 
 // --- Tickets ---
 
-export function listTickets() {
-  return request<Ticket[]>("/api/v1/tickets");
+export function listTickets(filter?: ListTicketsFilter) {
+  const params = new URLSearchParams();
+  if (filter?.status?.length) params.set("status", filter.status.join(","));
+  if (filter?.priority?.length) params.set("priority", filter.priority.join(","));
+  if (filter?.assignee_id) params.set("assignee_id", filter.assignee_id);
+  if (filter?.search) params.set("search", filter.search);
+  if (filter?.limit != null) params.set("limit", String(filter.limit));
+  if (filter?.offset != null) params.set("offset", String(filter.offset));
+  if (filter?.sort) params.set("sort", filter.sort);
+
+  const qs = params.toString();
+  const path = qs ? `/api/v1/tickets?${qs}` : "/api/v1/tickets";
+  return request<TicketListResponse>(path);
 }
 
 export function getTicket(id: string) {

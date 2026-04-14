@@ -7,13 +7,42 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"support-go/backend/internal/platform/metrics"
 )
 
 type Repository interface {
 	Create(ticket Ticket) error
 	GetByID(id string) (Ticket, error)
 	List() []Ticket
+	ListWithFilter(ctx context.Context, filter ListFilter) ([]Ticket, int, error)
 	Update(ticket Ticket) error
+}
+
+type SortOrder string
+
+const (
+	SortCreatedAtDesc SortOrder = "created_at_desc"
+	SortCreatedAtAsc  SortOrder = "created_at_asc"
+	SortUpdatedAtDesc SortOrder = "updated_at_desc"
+	SortUpdatedAtAsc  SortOrder = "updated_at_asc"
+)
+
+type ListFilter struct {
+	Statuses   []Status
+	Priorities []Priority
+	AssigneeID string
+	Search     string
+	Limit      int
+	Offset     int
+	Sort       SortOrder
+}
+
+type ListResult struct {
+	Items  []Ticket `json:"items"`
+	Total  int      `json:"total"`
+	Limit  int      `json:"limit"`
+	Offset int      `json:"offset"`
 }
 
 type CommentRepository interface {
@@ -104,6 +133,8 @@ func (service *Service) Create(input CreateInput) (Ticket, error) {
 		return Ticket{}, err
 	}
 
+	metrics.TicketsCreatedTotal.Inc()
+
 	_ = service.recordEvent(
 		ticket.ID,
 		ticket.RequesterID,
@@ -125,6 +156,33 @@ func (service *Service) Create(input CreateInput) (Ticket, error) {
 
 func (service *Service) List() []Ticket {
 	return service.repo.List()
+}
+
+func (service *Service) ListWithFilter(ctx context.Context, filter ListFilter) (ListResult, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 50
+	}
+	if filter.Limit > 200 {
+		filter.Limit = 200
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+	if filter.Sort == "" {
+		filter.Sort = SortCreatedAtDesc
+	}
+
+	items, total, err := service.repo.ListWithFilter(ctx, filter)
+	if err != nil {
+		return ListResult{}, err
+	}
+
+	return ListResult{
+		Items:  items,
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
+	}, nil
 }
 
 func (service *Service) GetByID(id string) (Ticket, error) {
